@@ -110,3 +110,9 @@ describe("reach", () => {
     expect(reachScore({ ...base, contacts: [{ role: "CTO", handle: "@x", affiliation: "strong" as const }] }, svc)).toBe(10);
   });
 });
+
+describe("pay with investor backing", () => {
+  it("scores backed-but-unknown-amount above unknown", () => {
+    expect(payScore({ ...dexProfile, fundingUsd: undefined, backed: true }, "mid")).toBe(6);
+  });
+});

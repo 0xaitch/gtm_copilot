@@ -25,3 +25,11 @@ describe("SSRF guard", () => {
     await expect(assertPublicUrl("https://1.1.1.1/")).resolves.toBeInstanceOf(URL);
   });
 });
+
+describe("page text", () => {
+  it("keeps meta descriptions from JS-app shells", async () => {
+    const { pageText } = await import("./web");
+    const html = `<html><head><title>ExampleX - 24/7 exchange</title><meta name="description" content="ExampleX is a perpetuals exchange."><meta property="og:description" content="ExampleX is a perpetuals exchange."></head><body><div id="root"></div><script>var a=1</script></body></html>`;
+    expect(pageText(html)).toBe("ExampleX - 24/7 exchange \nExampleX is a perpetuals exchange.");
+  });
+});

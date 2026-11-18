@@ -115,3 +115,22 @@ describe("forum detection", () => {
     expect(forumBase("https://example.org/forum")).toBeNull();
   });
 });
+
+describe("root domain", () => {
+  it("strips subdomains but keeps two-part suffixes", async () => {
+    const { rootDomain } = await import("./util");
+    expect(rootDomain("app.example.fi")).toBe("example.fi");
+    expect(rootDomain("www.example.co.uk")).toBe("example.co.uk");
+    expect(rootDomain("example.com")).toBe("example.com");
+  });
+});
+
+describe("founder extraction", () => {
+  it("pulls founder names from 'founded by' sentences, skipping orgs", async () => {
+    const { foundersIn } = await import("./steps/extract");
+    const t = "ExampleX was founded by Cambridge mathematicians Jane Doe and John Smith. Jane was at Flow Traders.";
+    expect(foundersIn(t).map((x) => x.name)).toEqual(["Jane Doe", "John Smith"]);
+    expect(foundersIn("Backed by Y Combinator and General Catalyst.")).toEqual([]);
+    expect(foundersIn("Co-founded in 2021 by Alice Martin.").map((x) => x.name)).toEqual(["Alice Martin"]);
+  });
+});

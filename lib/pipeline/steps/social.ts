@@ -20,6 +20,7 @@ export const social: Step = {
   async run(ctx, { now, x, fetcher }) {
     const project = { ...ctx.project };
     const warnings = [...ctx.warnings];
+    const notes = [...ctx.notes];
     // Brand tokens for news matching: domain brand ("ethena") > handle core > page name.
     // Generic words ("App") are never used — they attribute other companies' news to this project.
     const names = [...new Set([
@@ -45,7 +46,7 @@ export const social: Step = {
       if (!project.xUserId) project.xUserId = (await x.userByUsername(project.xHandle))?.id;
       if (project.xUserId) xPosts = await x.recentPosts(project.xUserId, project.xHandle, X_POSTS);
     } else if (!x) {
-      warnings.push("X API not configured — using free sources (news, Telegram, governance forum, GitHub, Farcaster/Bluesky) instead of X posts.");
+      notes.push("X API off — using free sources (news, Telegram, governance forum, GitHub, Farcaster, Bluesky).");
     }
 
     const facts = [
@@ -55,7 +56,7 @@ export const social: Step = {
     ];
     const next = { ...ctx, facts, project };
     return {
-      facts, project, warnings,
+      facts, project, warnings, notes,
       profile: buildProfile(next),
       usage: { ...ctx.usage, ...(x ? { x: { ...x.usage } } : {}) },
       sources: [

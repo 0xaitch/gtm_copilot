@@ -41,7 +41,7 @@ const MAX_CONTACTS = 15;
 const DECISION_ROLES = /founder|ceo|cto|ciso|chief|head of|vp |lead/i;
 const SECURITY_TALK = /\b(audit|security|exploit|vulnerab|bug bounty|pentest|mainnet|testnet|launch)\w*/i;
 
-type Via = "site" | "github" | "forum" | "forum-brand" | "fc-following" | "farcaster" | "bluesky" | "affiliate" | "search";
+type Via = "site" | "site-name" | "github" | "forum" | "forum-brand" | "fc-following" | "farcaster" | "bluesky" | "affiliate" | "search";
 
 interface Candidate {
   handle?: string;          // X handle (no @)
@@ -68,6 +68,7 @@ export const people: Step = {
       .filter((b): b is string => !!b && b.length >= 4 && !isGenericName(b)))];
     const searchName = project.name && !isGenericName(project.name) ? project.name : brand;
     const warnings = [...ctx.warnings];
+    const notes = [...ctx.notes];
 
     const cands = new Map<string, Candidate>();
     const add = (key: string, c: Partial<Omit<Candidate, "links" | "via" | "notes">> & { link?: string; note?: string }, via: Via) => {
@@ -134,6 +135,19 @@ export const people: Step = {
         }
       }
 
+      // 4a'. people named on the site/docs without a handle → exact display-name match on Farcaster
+      const norm = (s?: string) => (s ?? "").toLowerCase().replace(/[^a-z]/g, "");
+      const named = ctx.facts.filter((f) => f.key === FK.contact)
+        .map((f) => f.value as Contact).filter((c) => c.name && !c.handle).slice(0, 5);
+      for (const person of named) {
+        const hit = (await farcasterSearch(person.name!, 5)).find((u) => norm(u.displayName) === norm(person.name));
+        if (!hit) continue;
+        add(`fc:${hit.username}`, {
+          handle: hit.xHandles[0], name: person.name, bio: hit.bio, bioSource: "Farcaster bio",
+          followers: hit.followers, link: hit.url, note: `same name as "${person.name}" (${person.role}) on the project site`,
+        }, "site-name");
+      }
+
       // 4b. bios for X handles found elsewhere (people who verified that X account on Farcaster)
       const handles = [...cands.values()].filter((c) => c.handle && !c.bio).map((c) => c.handle!).slice(0, MAX_FARCASTER_LOOKUPS);
       const results = await Promise.all(handles.map(async (h) => [h, (await farcasterByX(h))[0]] as const));
@@ -182,7 +196,9 @@ export const people: Step = {
       if (c.via.has("forum-brand")) { affiliation = "strong"; why.push(c.notes.find((n) => n.startsWith("member of")) ?? "project forum team"); }
       if (mention && role) { affiliation = "strong"; why.push(`${c.bioSource ?? "bio"}: "${role.phrase}" + "${mention}"`); }
       if (c.via.has("site") && (role || mention)) { affiliation = "strong"; why.push("linked from project website"); }
+      if (c.via.has("site-name") && mention) { affiliation = "strong"; why.push(c.notes.find((n) => n.startsWith("same name")) ?? "named on project site"); }
       if (!affiliation && mention) { affiliation = "medium"; why.push(`${c.bioSource ?? "bio"} mentions "${mention}"`); }
+      if (!affiliation && c.via.has("site-name")) { affiliation = "medium"; why.push(`${c.notes.find((n) => n.startsWith("same name")) ?? "name match"} — verify it's the same person`); }
       if (!affiliation && c.via.has("github") && (role || mention)) { affiliation = "medium"; why.push("top GitHub contributor"); }
       if (!affiliation && c.via.has("forum")) { affiliation = "medium"; why.push(c.notes.find((n) => n.startsWith("member of")) ?? "forum team group"); }
       if (!affiliation && c.via.has("site") && c.bio) { affiliation = "medium"; why.push("linked from project website"); }
@@ -222,7 +238,7 @@ export const people: Step = {
     }
 
     if (!neynarConfigured() && !x) {
-      warnings.push("Tip: a free NEYNAR_API_KEY lets the copilot read Farcaster bios for X handles it finds (no X API needed).");
+      notes.push("Tip: a free NEYNAR_API_KEY lets the copilot read Farcaster bios for team members (no X API needed).");
     }
 
     const facts: Fact[] = contacts.map((c) => ({
@@ -235,6 +251,7 @@ export const people: Step = {
     return {
       facts: next.facts,
       warnings,
+      notes,
       profile: buildProfile(next),
       usage: { ...ctx.usage, ...(x ? { x: { ...x.usage } } : {}) },
     };

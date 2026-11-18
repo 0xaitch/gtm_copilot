@@ -1,6 +1,6 @@
 /** Step 1 — Resolve: URL or X handle → canonical project with linked handles. */
 import { FORUM_HOST_RE, forumBase } from "@/lib/connectors/discourse";
-import { extractLinks, extractTitle, extractXHandles, htmlToText } from "@/lib/connectors/web";
+import { extractLinks, extractTitle, extractXHandles, pageText } from "@/lib/connectors/web";
 import { findProtocolByDomain, findProtocolByHandleFuzzy, findProtocolByTwitter, siteOrigin } from "@/lib/connectors/defillama";
 import { parseXHandle, websiteOf } from "@/lib/connectors/x";
 import type { Step } from "../types";
@@ -120,7 +120,7 @@ export const resolve: Step = {
       warnings: ctx.warnings,
       sources: [{
         id: newId("src"), url: home.url, kind: "page", fetchedAt: now.toISOString(),
-        text: `${extractTitle(home.html) ?? ""} ${htmlToText(home.html)}`.trim(),
+        text: pageText(home.html),
         xLinks: extractXHandles(links),
       }],
     };

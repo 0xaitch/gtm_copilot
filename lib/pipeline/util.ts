@@ -45,3 +45,12 @@ export function brandFromDomain(domain?: string): string | undefined {
 }
 
 export const titleCase = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** "app.ethena.fi" → "ethena.fi", "www.example.co.uk" → "example.co.uk". */
+export function rootDomain(domain?: string): string | undefined {
+  if (!domain) return undefined;
+  const parts = domain.toLowerCase().replace(/^www\./, "").split(".");
+  if (parts.length < 2) return undefined;
+  const n = parts.length >= 3 && SECOND_LEVEL.has(parts[parts.length - 2]) ? 3 : 2;
+  return parts.slice(-n).join(".");
+}

@@ -18,6 +18,8 @@ export const triggers: Step = {
       if (!type.success) continue;
 
       let occurredAt = f.observedAt;
+      // an undated "has raised" on a website is evergreen — it says nothing about timing
+      if (!occurredAt && type.data === "funding") continue;
       if (!occurredAt) {
         occurredAt = new Date(now.getTime() - ASSUMED_AGE_DAYS * 86_400_000).toISOString();
         // an undated trigger can't count as verified timing evidence

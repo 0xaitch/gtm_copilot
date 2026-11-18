@@ -81,6 +81,8 @@ const RULES: Rule[] = [
   { re: /\bmainnet\b[^.]{0,40}\b(launch|live|coming)/i, build: trig("mainnet_launch") },
   { re: /\b(TGE|token generation event|token launch)\b/i, build: trig("token_launch") },
   { re: /\b(raised|raises|seed round|series [a-c]|strategic round)\b/i, build: trig("funding", 0.7) },
+  // evergreen "backed by / has raised from" → investor-backed (ability to pay), not a why-now trigger
+  { re: /\b(backed by|has raised|raised (money|capital|funding) from|investors include|our investors)\b/i, build: () => ({ key: FK.funding, value: { backed: true }, kind: "fact", confidence: 0.7 }) },
   { re: /\b(partners? with|partnership with|strategic partnership)\b/i, build: trig("partnership", 0.5) },
   { re: /\b(hiring|we're hiring|join us)\b[^.]{0,60}\b(security|compliance|CISO)\b/i, build: trig("security_hiring", 0.6) },
 
@@ -91,6 +93,23 @@ const RULES: Rule[] = [
 ];
 
 const ROLE_RE = /\b([A-Z][a-z]+ [A-Z][a-z]+)\s*[,|–—-]\s*(Co-?founder (?:&|and) CTO|Co-?founder (?:&|and) CEO|CTO|CEO|CISO|COO|Chief [A-Z][a-z]+ Officer|Head of [A-Z][a-z]+(?: [A-Z][a-z]+)?|Co-?founder)\b/g;
+
+/**
+ * "X was (co-)founded by Cambridge mathematicians Jane Doe and John Smith." → founders.
+ * Looks only within the sentence; a person name = 2–3 capitalised words (each with lowercase letters).
+ */
+const FOUNDED_BY = /\b(?:co-?)?founded\s+(?:in\s+\d{4}\s+)?by\b([^.!?\n]{3,160})/gi;
+const PERSON = /\b([A-Z][a-z]+(?:[ -](?:[A-Z][a-z]+|[A-Z]\.)){1,2})\b/g;
+const NOT_PERSON = /\b(Labs?|Capital|Ventures|Research|Foundation|Protocol|Network|Exchange|University|College|Combinator|Catalyst|Traders|Street|Group|Inc|Ltd|Fund|Partners)\b/;
+export function foundersIn(text: string): { name: string; index: number; phrase: string }[] {
+  const out: { name: string; index: number; phrase: string }[] = [];
+  for (const m of text.matchAll(FOUNDED_BY)) {
+    for (const p of m[1].matchAll(PERSON)) {
+      if (!NOT_PERSON.test(p[1])) out.push({ name: p[1], index: m.index ?? 0, phrase: m[0] });
+    }
+  }
+  return out;
+}
 
 export function heuristicExtract(sources: Source[]): Fact[] {
   const facts: Fact[] = [];
@@ -113,6 +132,16 @@ export function heuristicExtract(sources: Source[]): Fact[] {
       facts.push({
         id: newId("fact"), key: FK.contact, value: { name: m[1], role: m[2], affiliation: "strong", evidence: "named with role on project website", sourceUrl: s.url }, kind: "fact",
         confidence: 0.6, sourceUrl: s.url, quote: snippet(s.text, m.index ?? 0, m[0].length, 30),
+      });
+    }
+    for (const { name, index, phrase } of foundersIn(s.text)) {
+      const dedupe = `contact:${name}`;
+      if (seen.has(dedupe)) continue;
+      seen.add(dedupe);
+      facts.push({
+        id: newId("fact"), key: FK.contact,
+        value: { name, role: "Co-founder", affiliation: "strong", evidence: "named as founder on project site/docs", sourceUrl: s.url },
+        kind: "fact", confidence: 0.75, sourceUrl: s.url, quote: snippet(s.text, index, phrase.length, 40),
       });
     }
   }

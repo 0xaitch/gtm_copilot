@@ -128,3 +128,19 @@ export function extractXHandles(links: string[]): string[] {
   }
   return [...out];
 }
+
+/** Meta/OG descriptions — often the only real text in a JavaScript-app shell. */
+export function extractMetaDescriptions(html: string): string[] {
+  const out = new Set<string>();
+  for (const m of html.matchAll(/<meta\s+[^>]*(?:name|property)=["'](?:description|og:description|twitter:description)["'][^>]*>/gi)) {
+    const c = m[0].match(/content=["']([^"']+)["']/i)?.[1];
+    if (c) out.add(htmlToText(c));
+  }
+  return [...out];
+}
+
+/** Title + meta descriptions + visible text. */
+export function pageText(html: string): string {
+  const body = htmlToText(html.replace(/<head[\s\S]*?<\/head>/i, ""));
+  return [extractTitle(html), ...extractMetaDescriptions(html), body].filter(Boolean).join(" \n").trim();
+}

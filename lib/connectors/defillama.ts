@@ -116,6 +116,7 @@ const CATEGORY_MAP: Record<string, Segment[]> = {
   "Bridge": ["web3_infra"], "Cross Chain Bridge": ["web3_infra"], "Canonical Bridge": ["web3_infra"],
   "Chain": ["l1"], "CEX": ["cex"],
   "Algo-Stables": ["stablecoin", "defi"], "Reserve Currency": ["stablecoin", "defi"], "Stablecoins": ["stablecoin"],
+  "Derivatives": ["dex", "defi"], "Perpetuals": ["dex", "defi"], "Options": ["dex", "defi"], "Synthetics": ["defi"], "Prediction Market": ["dapp", "defi"],
   "Payments": ["fintech"], "Crypto Card Issuer": ["fintech"], "Wallets": ["wallet"],
   "Gaming": ["dapp"], "SoFi": ["dapp"], "AI Agents": ["dapp"], "Services": ["web3_infra"],
 };

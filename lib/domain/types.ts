@@ -75,6 +75,8 @@ export const Profile = z.object({
   isB2B: z.boolean().optional(),
   hasToken: z.boolean().optional(),
   fundingUsd: z.number().optional(),
+  /** Investor-backed (stated on site/docs) even when no amount is known. */
+  backed: z.boolean().optional(),
   lastFundingAt: z.string().optional(),
   tvlUsd: z.number().optional(),
   codeLoc: z.number().optional(),

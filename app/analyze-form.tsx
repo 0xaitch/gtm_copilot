@@ -16,6 +16,7 @@ interface Result {
   theses: Thesis[];
   briefs: ProspectBrief[];
   warnings: string[];
+  notes?: string[];
   usage?: { x?: { userReads: number; postReads: number; estUsd: number } };
   halted?: { stage: string; reason: string };
   error?: string;
@@ -75,6 +76,7 @@ export function AnalyzeForm() {
         </p>
       )}
       {res?.warnings?.map((w) => <p key={w} className="text-sm text-amber-700">⚠ {w}</p>)}
+      {res?.notes?.map((n) => <p key={n} className="text-xs text-zinc-500">ℹ {n}</p>)}
 
       {res?.profile && (
         <section className="rounded-md border border-zinc-200 p-4 text-sm dark:border-zinc-800">

@@ -29,15 +29,27 @@ export function buildProfile(ctx: AnalysisContext): Profile {
   const largest = [...rounds].sort((a, b) => b.usd - a.usd)[0];
   const latestAt = rounds.map((r) => r.at).filter(Boolean).sort().reverse()[0];
 
-  // contacts: dedupe by handle/name, strongest affiliation first
-  const byKey = new Map<string, Contact>();
+  // contacts: the same person can arrive from several sources (site names them, Farcaster gives the
+  // handle) → merge on handle OR normalised name; keep the strongest affiliation and specific role.
+  const norm = (s?: string) => (s ?? "").toLowerCase().replace(/[^a-z]/g, "");
+  const merged: Contact[] = [];
   for (const f of of(FK.contact)) {
-    const c = { ...(f.value as Contact), factId: f.id };
-    const key = (c.handle ?? c.name ?? f.id).toLowerCase();
-    const prev = byKey.get(key);
-    if (!prev || AFFIL_RANK[c.affiliation ?? "weak"] < AFFIL_RANK[prev.affiliation ?? "weak"]) byKey.set(key, c);
+    const c: Contact = { ...(f.value as Contact), factId: f.id };
+    const prev = merged.find((m) =>
+      (c.handle && m.handle && c.handle.toLowerCase() === m.handle.toLowerCase()) ||
+      (c.name && m.name && norm(c.name) === norm(m.name)));
+    if (!prev) { merged.push(c); continue; }
+    const generic = (r?: string) => !r || /team member|engineer \(github/i.test(r);
+    prev.handle ??= c.handle;
+    prev.bio ??= c.bio;
+    prev.followers ??= c.followers;
+    prev.channel ??= c.channel;
+    if (generic(prev.role) && !generic(c.role)) prev.role = c.role;
+    if (AFFIL_RANK[c.affiliation ?? "weak"] < AFFIL_RANK[prev.affiliation ?? "weak"]) prev.affiliation = c.affiliation;
+    if (c.evidence && !prev.evidence?.includes(c.evidence)) prev.evidence = [prev.evidence, c.evidence].filter(Boolean).join("; ");
+    if (c.handle && prev.sourceUrl && !/x\.com/.test(prev.sourceUrl)) prev.sourceUrl = `https://x.com/${c.handle.replace(/^@/, "")}`;
   }
-  const contacts = [...byKey.values()].sort(
+  const contacts = merged.sort(
     (a, b) => AFFIL_RANK[a.affiliation ?? "weak"] - AFFIL_RANK[b.affiliation ?? "weak"],
   );
 
@@ -48,6 +60,7 @@ export function buildProfile(ctx: AnalysisContext): Profile {
     isB2B: of(FK.b2b).length ? true : undefined,
     hasToken: of(FK.token).length ? true : undefined,
     fundingUsd: largest?.usd || undefined,
+    backed: rounds.length > 0 || undefined,
     lastFundingAt: latestAt,
     tvlUsd: tvl,
     codeLoc,

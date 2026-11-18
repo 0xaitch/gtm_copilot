@@ -38,6 +38,8 @@ export interface AnalysisContext {
   theses: Thesis[];
   briefs: ProspectBrief[];
   warnings: string[];
+  /** Neutral information (e.g. which optional sources were skipped). */
+  notes: string[];
   /** Paid API usage for this analysis (cost transparency). */
   usage: { x?: XUsage };
   /** Set by a step to stop the pipeline early with a user-facing reason. */
@@ -60,6 +62,6 @@ export interface Step {
 export function emptyContext(raw: string): AnalysisContext {
   return {
     input: { raw }, project: {}, links: [], sources: [], facts: [], posture: [],
-    triggers: [], candidates: [], scores: [], theses: [], briefs: [], warnings: [], usage: {},
+    triggers: [], candidates: [], scores: [], theses: [], briefs: [], warnings: [], notes: [], usage: {},
   };
 }

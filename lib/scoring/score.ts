@@ -102,7 +102,7 @@ const BAND_THRESHOLD_USD: Record<TicketBand, number> = {
 };
 export function payScore(profile: Profile, band: TicketBand): number {
   const capacity = Math.max(profile.fundingUsd ?? 0, (profile.tvlUsd ?? 0) * 0.1);
-  if (capacity === 0) return 4; // unknown — neutral-low, not zero
+  if (capacity === 0) return profile.backed ? 6 : 4; // investor-backed but amount unknown → moderate
   const ratio = capacity / BAND_THRESHOLD_USD[band];
   if (ratio >= 1) return 10;
   if (ratio >= 0.5) return 7;
