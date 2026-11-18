@@ -1,0 +1,97 @@
+# Web3-only preset for a security services firm (initial prospecting batch).
+# Vendor-neutral: replace claims/templates/pricing with your own playbook.
+name: Web3 Security Services
+version: 1
+scope: web3
+
+services:
+  - key: smart_contract_audit
+    name: Smart Contract Audit
+    category: web3_code
+    ticketBand: low
+    icpSegments: [defi, dex, lending, staking, rwa, stablecoin, launchpad, token_project, nft, nft_marketplace, dapp]
+    hotStages: [testnet, pre_mainnet]
+    personas:
+      primary: [CTO, Head of Engineering, Smart Contract Lead, Head of Security]
+      secondary: [Co-founder, CEO, Head of BD]
+
+  - key: protocol_audit
+    name: L1 / L2 Protocol Audit
+    category: web3_code
+    ticketBand: high
+    icpSegments: [l1, l2, appchain]
+    hotStages: [testnet, pre_mainnet]
+    personas:
+      primary: [CTO, Head of Protocol Engineering, Head of Security]
+      secondary: [Co-founder, CEO, Foundation Lead]
+
+  - key: tokenomics_review
+    name: Tokenomics Review
+    category: advisory
+    ticketBand: low
+    icpSegments: [token_project, defi, launchpad, l1, l2]
+    hotStages: [testnet, pre_mainnet]
+    personas:
+      primary: [CEO, Co-founder, Head of Tokenomics]
+      secondary: [CFO, Head of BD]
+
+  - key: pentest
+    name: Penetration Testing
+    category: offensive
+    ticketBand: mid
+    icpSegments: [cex, wallet, dapp, defi, dex, lending, staking, launchpad, nft_marketplace, web3_infra, rwa, stablecoin, l1, l2]
+    hotStages: [pre_mainnet, mainnet, scaling]
+    personas:
+      primary: [CTO, CISO, Head of Security, Head of Engineering]
+      secondary: [CEO, COO]
+
+  - key: soc2
+    name: SOC 2 Readiness & Certification
+    category: compliance
+    ticketBand: mid
+    icpSegments: [web3_infra, cex, wallet, rwa, stablecoin]
+    hotStages: [mainnet, scaling]
+    requiresB2B: true
+    personas:
+      primary: [Chief Compliance Officer, CISO, CTO, COO, Head of Legal]
+      secondary: [CEO, CFO, VP Sales]
+
+
+triggers:
+  - { type: funding,             weight: 0.8,  decayDays: 90,  services: ["*"] }
+  - { type: testnet_launch,      weight: 0.85, decayDays: 120, services: [smart_contract_audit, protocol_audit, tokenomics_review] }
+  - { type: mainnet_launch,      weight: 1.0,  decayDays: 60,  services: [smart_contract_audit, protocol_audit, pentest] }
+  - { type: token_launch,        weight: 0.9,  decayDays: 60,  services: [smart_contract_audit, tokenomics_review] }
+  - { type: product_launch,      weight: 0.7,  decayDays: 60,  services: [smart_contract_audit, pentest] }
+  - { type: new_security_leader, weight: 0.6,  decayDays: 120, services: ["*"] }
+  - { type: partnership,         weight: 0.6,  decayDays: 90,  services: [soc2, pentest] }
+  - { type: ecosystem_incident,  weight: 0.6,  decayDays: 30,  services: [smart_contract_audit, pentest, protocol_audit] }
+  - { type: own_incident,        weight: 0.9,  decayDays: 60,  services: [smart_contract_audit, pentest, protocol_audit] }
+  - { type: regulation,          weight: 0.6,  decayDays: 180, services: [soc2, pentest] }
+  - { type: growth_spike,        weight: 0.5,  decayDays: 60,  services: [smart_contract_audit, pentest] }
+  - { type: security_hiring,     weight: 0.5,  decayDays: 60,  services: ["*"] }
+
+# Claims & outreach templates are intentionally omitted in the MVP (prospecting only).
+# The schema still supports `claims` and `templates` for a later outreach phase.
+
+# Illustrative placeholder numbers only — replace with your own pricing.
+pricing:
+  fixedTiers:
+    - { service: smart_contract_audit, label: "Entry (small codebase)", priceUsd: 1500, maxLoc: 500 }
+  effortFormula:
+    services: [smart_contract_audit, protocol_audit]
+    dayRateUsd: 1200
+    locPerDay: 400
+    bufferDays: [2, 4]
+
+competitors: []
+
+qualification:
+  timelineDays: 90
+
+scoring:
+  weights: { need: 0.3, gap: 0.25, timing: 0.25, pay: 0.1, reach: 0.1 }
+  thesisMinScore: 5
+  tiers: { a: 8, b: 6 }
+  caps: { coveredRecent: 3, noVerifiedTrigger: 6 }
+  staleAfterMonths: 12

@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# real tenant playbooks / rubriks — never commit
+rubrik/private/
+!.env.example
