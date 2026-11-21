@@ -74,6 +74,13 @@ export async function assertPublicUrl(raw: string): Promise<URL> {
 
 const MAX_REDIRECTS = 5;
 
+/** Bot-protection interstitials (Cloudflare, Vercel, etc.) are not the site's content. */
+const CHALLENGE_TITLE = /^(just a moment|attention required|vercel security checkpoint|access denied|checking your browser|ddos-guard|please wait|security check)/i;
+export function isBotChallenge(html: string): boolean {
+  const title = html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1]?.trim() ?? "";
+  return CHALLENGE_TITLE.test(title) || /cf-challenge|challenge-platform|_vercel\/security|cf_chl_/i.test(html.slice(0, 20_000));
+}
+
 export function createFetcher(opts: { timeoutMs?: number; maxBytes?: number } = {}): Fetcher {
   const timeoutMs = opts.timeoutMs ?? 10_000;
   const maxBytes = opts.maxBytes ?? 2_000_000;
@@ -93,9 +100,11 @@ export function createFetcher(opts: { timeoutMs?: number; maxBytes?: number } = 
             url = await assertPublicUrl(new URL(loc, url).toString()); // check BEFORE following
             continue;
           }
+          if (res.status >= 400) return null; // blocked, missing or erroring — not content
           const ct = res.headers.get("content-type") ?? "";
           if (!ct.includes("text/html") && !ct.includes("text/plain") && !ct.includes("json") && !ct.includes("xml")) return null;
           const html = (await res.text()).slice(0, maxBytes);
+          if (ct.includes("html") && isBotChallenge(html)) return null;
           return { url: url.toString(), status: res.status, html };
         }
         return null; // too many redirects

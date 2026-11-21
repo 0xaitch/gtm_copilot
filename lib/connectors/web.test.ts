@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { assertPublicUrl, isPrivateIp } from "./web";
+import { assertPublicUrl, isBotChallenge, isPrivateIp } from "./web";
+import { coreHandle, pickForHandle } from "./defillama";
 
 describe("SSRF guard", () => {
   it("classifies private and public addresses", () => {
@@ -43,5 +44,20 @@ describe("local target pre-check", () => {
     for (const s of ["example.org", "https://www.example.org", "1.1.1.1"]) {
       expect(isLocalTarget(s), s).toBe(false);
     }
+  });
+});
+
+describe("bot challenges and DefiLlama handle picking", () => {
+  it("recognises bot-protection interstitials", () => {
+    expect(isBotChallenge("<html><head><title>Just a moment...</title></head></html>")).toBe(true);
+    expect(isBotChallenge("<title>Vercel Security Checkpoint</title>")).toBe(true);
+    expect(isBotChallenge("<title>ExampleFi — lending</title><body>Hello</body>")).toBe(false);
+  });
+
+  it("prefers the listing named after the handle, then the largest non-bridge one", () => {
+    const p = (name: string, category: string, tvl: number) => ({ id: name, name, category, tvl });
+    expect(pickForHandle([p("Lendy", "Lending", 9e6), p("ExampleChain", "Chain", 1e6)], "examplechain")?.name).toBe("ExampleChain");
+    expect(pickForHandle([p("ExampleX Bridge", "Bridge", 5e9), p("ExampleX Perps", "Derivatives", 1e9)], "examplexyz")?.name).toBe("ExampleX Perps");
+    expect(coreHandle("example_sol")).toBe("example");
   });
 });

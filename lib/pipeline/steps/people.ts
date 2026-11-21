@@ -184,7 +184,11 @@ export const people: Step = {
     // Classify
     const ref = { handle: project.xHandle, name: searchName, domain: project.domain };
     const scored: { contact: Contact; score: number }[] = [];
+    const norm = (s?: string) => (s ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const brandNames = new Set([...brands, searchName].map(norm).filter(Boolean));
     for (const c of cands.values()) {
+      // An account named after the project is the project (or an impersonator), not a person.
+      if (c.name && brandNames.has(norm(c.name))) continue;
       const text = [c.bio, c.title].filter(Boolean).join(" · ");
       const hit = roleFromBio(text);
       const role = hit && !isFormer(text, hit.phrase) ? hit : null;

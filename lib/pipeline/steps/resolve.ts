@@ -1,10 +1,21 @@
 /** Step 1 — Resolve: URL or X handle → canonical project with linked handles. */
 import { FORUM_HOST_RE, forumBase } from "@/lib/connectors/discourse";
 import { extractLinks, extractTitle, extractXHandles, isLocalTarget, pageText } from "@/lib/connectors/web";
-import { findProtocolByDomain, findProtocolByHandleFuzzy, findProtocolByTwitter, siteOrigin } from "@/lib/connectors/defillama";
+import { brandName, findProtocolByDomain, findProtocolByHandleFuzzy, findProtocolByTwitter, siteOrigin } from "@/lib/connectors/defillama";
 import { parseXHandle, websiteOf } from "@/lib/connectors/x";
 import type { Step } from "../types";
-import { brandFromDomain, isGenericName, newId, titleCase } from "../util";
+import { brandFromDomain, isGenericName, newId, rootDomain, titleCase } from "../util";
+
+/** DefiLlama often lists the dApp (app.x.xyz); the marketing site at the root has the team, docs and socials. */
+function rootFirst(site: string): string[] {
+  try {
+    const host = new URL(site).hostname.replace(/^www\./, "");
+    const root = rootDomain(host);
+    return root && root !== host ? [`https://${root}/`, site] : [site];
+  } catch {
+    return [site];
+  }
+}
 
 function classifyLinks(links: string[]) {
   const pick = (re: RegExp) => links.find((l) => re.test(l));
@@ -66,7 +77,7 @@ export const resolve: Step = {
         if (fuzzy?.url) {
           website = siteOrigin(fuzzy.url);
           confidence = 0.7;
-          ctx = { ...ctx, warnings: [...ctx.warnings, `@${handle} matched "${fuzzy.name}" on DefiLlama by name similarity (listed handle: @${fuzzy.twitter}) — verify it's the right project.`] };
+          ctx = { ...ctx, warnings: [...ctx.warnings, `@${handle} matched "${await brandName(fuzzy)}" on DefiLlama by name similarity (listed handle: @${fuzzy.twitter}) — verify it's the right project.`] };
         }
       }
       if (!website) {
@@ -83,7 +94,11 @@ export const resolve: Step = {
       website = raw.startsWith("http") ? raw : `https://${raw}`;
     }
 
-    const home = await fetcher.get(website);
+    let home = null;
+    for (const candidate of xHandle ? rootFirst(website) : [website]) {
+      home = await fetcher.get(candidate);
+      if (home) break;
+    }
     if (!home) {
       // Many sites block bots. If structured data knows the project, continue without the homepage.
       let domain: string | undefined;
@@ -93,7 +108,7 @@ export const resolve: Step = {
         return {
           input: { raw, type: xHandle ? "x" : "url" },
           project: {
-            name: known.name, domain, website, xHandle: xHandle ?? known.twitter ?? undefined,
+            name: await brandName(known), domain, website, xHandle: xHandle ?? known.twitter ?? undefined,
             github: known.github?.[0] ? `https://github.com/${known.github[0]}` : undefined,
             resolutionConfidence: 0.8,
           },

@@ -52,7 +52,7 @@ export const social: Step = {
     const facts = [
       ...ctx.facts,
       ...factsFromPosts([...xPosts, ...tg, ...forum], { ownChannel: true }),
-      ...factsFromPosts(news, { ownChannel: false }),
+      ...factsFromPosts(news, { ownChannel: false, names }),
     ];
     const next = { ...ctx, facts, project };
     return {

@@ -41,6 +41,17 @@ describe("factsFromPosts", () => {
     expect(f.some((x) => x.key === FK.funding)).toBe(false);
   });
 
+  it("only credits third-party news to the project when it is the subject", () => {
+    const names = ["examplefi"];
+    const facts = (t: string) => factsFromPosts([post(t, "news")], { ownChannel: false, names });
+    expect(facts("ExampleFi Competitor Raises $110 Million at a $1.5 Billion Valuation").some((x) => x.key === FK.funding)).toBe(false);
+    expect(facts("OtherCo Raises $110 Million to Take On ExampleFi").some((x) => x.key === FK.funding)).toBe(false);
+    expect(facts("OtherCo raises $14M in Series A funding for ExampleFi staking").some((x) => x.key === FK.funding)).toBe(false);
+    expect(facts("ExampleFi raises $14M Series A led by Some Ventures").some((x) => x.key === FK.funding)).toBe(true);
+    expect(facts("OtherCo partners with ExampleFi").some((x) => x.key === FK.trigger)).toBe(false);
+    expect(facts("ExampleFi partners with OtherCo").some((x) => x.key === FK.trigger)).toBe(true);
+  });
+
   it("accepts '<amount> series A round' phrasing", () => {
     const f = factsFromPosts([post("ExampleFi announces $30M Series A round")], { ownChannel: false });
     expect(f.find((x) => x.key === FK.funding)?.value).toEqual({ amountUsd: 30_000_000, round: "Series A" });

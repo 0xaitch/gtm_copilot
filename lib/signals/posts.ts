@@ -42,15 +42,32 @@ export function mentionsProject(text: string, names: string[]): boolean {
   return names.some((n) => n.length >= 3 && new RegExp(`\\b${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text));
 }
 
-export function factsFromPosts(posts: DatedPost[], opts: { ownChannel: boolean }): Fact[] {
+/** Headlines about someone else ("X competitor raises…", "Y raises $10M to take on X"). */
+const OTHER_SUBJECT = /\b(competitor|rival|challenger|clone|fork|former|alumni|ex)\b/i;
+
+/**
+ * For third-party news: is the project the one DOING the action? The brand must appear before
+ * the matched verb, and that leading part must not describe a different company.
+ * "Infrared raises $14M for Berachain…" → not Berachain's raise.
+ */
+export function isSubject(text: string, matchIndex: number, names: string[]): boolean {
+  const lead = text.slice(0, matchIndex);
+  return mentionsProject(lead, names) && !OTHER_SUBJECT.test(lead);
+}
+
+export function factsFromPosts(posts: DatedPost[], opts: { ownChannel: boolean; names?: string[] }): Fact[] {
   const out: Fact[] = [];
   const conf = opts.ownChannel ? 0.85 : 0.7;
   const push = (f: Omit<Fact, "id">) => out.push({ ...f, id: newId("fact") });
   const quote = (p: DatedPost) => p.text.replace(/\s+/g, " ").slice(0, 220);
 
+  // Own channels speak for the project; third-party news must name it as the subject.
+  const about = (m: RegExpMatchArray | null) =>
+    !!m && (opts.ownChannel || !opts.names?.length || isSubject(m.input ?? "", m.index ?? 0, opts.names));
+
   for (const p of posts) {
     const fm = NOT_A_RAISE.test(p.text) ? null : p.text.match(FUNDING_RE);
-    if (fm) {
+    if (fm && about(fm)) {
       const amountUsd = parseUsdAmount(fm[0]);
       const round = p.text.match(ROUND_RE)?.[0];
       if (amountUsd && amountUsd <= MAX_PLAUSIBLE_RAISE_USD) {
@@ -59,7 +76,8 @@ export function factsFromPosts(posts: DatedPost[], opts: { ownChannel: boolean }
       }
     }
     for (const [re, type] of TRIGGER_RULES) {
-      if (re.test(p.text)) {
+      const m = p.text.match(re);
+      if (m && about(m)) {
         push({ key: FK.trigger, value: { type }, kind: "fact", confidence: conf * 0.9, sourceUrl: p.url, quote: quote(p), observedAt: p.at });
         break; // one trigger per post keeps noise down
       }
