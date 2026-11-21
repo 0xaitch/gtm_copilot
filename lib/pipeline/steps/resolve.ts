@@ -1,6 +1,6 @@
 /** Step 1 — Resolve: URL or X handle → canonical project with linked handles. */
 import { FORUM_HOST_RE, forumBase } from "@/lib/connectors/discourse";
-import { extractLinks, extractTitle, extractXHandles, pageText } from "@/lib/connectors/web";
+import { extractLinks, extractTitle, extractXHandles, isLocalTarget, pageText } from "@/lib/connectors/web";
 import { findProtocolByDomain, findProtocolByHandleFuzzy, findProtocolByTwitter, siteOrigin } from "@/lib/connectors/defillama";
 import { parseXHandle, websiteOf } from "@/lib/connectors/x";
 import type { Step } from "../types";
@@ -27,6 +27,13 @@ export const resolve: Step = {
     let xHandle: string | undefined;
     let confidence = 0.6;
     let xUserId: string | undefined;
+
+    if (!raw.startsWith("@") && isLocalTarget(raw)) {
+      return {
+        input: { raw },
+        halted: { stage: "resolve", reason: "Local and private network addresses aren't allowed — enter a public project website or X handle." },
+      };
+    }
 
     if (!handle && (raw.startsWith("@") || !raw.includes("."))) {
       return {

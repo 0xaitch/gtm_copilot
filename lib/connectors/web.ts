@@ -42,6 +42,20 @@ export function isPrivateIp(ip: string): boolean {
   return true; // not an IP → caller must resolve first
 }
 
+/**
+ * Cheap pre-check for user input (no DNS): does this point at this machine or a private network?
+ * Used to give a clear message; the real guard is still assertPublicUrl on every fetch.
+ */
+export function isLocalTarget(raw: string): boolean {
+  try {
+    const url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `http://${raw}`);
+    const host = url.hostname.replace(/^\[|\]$/g, "");
+    return BLOCKED_NAMES.test(host) || (isIP(host) !== 0 && isPrivateIp(host));
+  } catch {
+    return false;
+  }
+}
+
 export async function assertPublicUrl(raw: string): Promise<URL> {
   const url = new URL(raw);
   if (!["http:", "https:"].includes(url.protocol)) throw new Error("only http(s) URLs allowed");

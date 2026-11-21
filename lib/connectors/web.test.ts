@@ -33,3 +33,15 @@ describe("page text", () => {
     expect(pageText(html)).toBe("ExampleX - 24/7 exchange \nExampleX is a perpetuals exchange.");
   });
 });
+
+describe("local target pre-check", () => {
+  it("flags local/private inputs and passes public ones", async () => {
+    const { isLocalTarget } = await import("./web");
+    for (const s of ["http://localhost:3000", "localhost", "127.0.0.1", "http://169.254.169.254/latest/meta-data/", "192.168.1.1:8080", "http://[::1]/", "router.lan", "http://2130706433/"]) {
+      expect(isLocalTarget(s), s).toBe(true);
+    }
+    for (const s of ["example.org", "https://www.example.org", "1.1.1.1"]) {
+      expect(isLocalTarget(s), s).toBe(false);
+    }
+  });
+});
