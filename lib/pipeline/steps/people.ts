@@ -97,7 +97,7 @@ export const people: Step = {
     if (owner) {
       for (const g of await githubPeople(owner)) {
         add(`gh:${g.login}`, {
-          handle: g.twitter_username ?? undefined, name: g.name ?? undefined, company: g.company ?? undefined,
+          handle: g.twitter_username ?? undefined, name: g.name ?? g.login, company: g.company ?? undefined,
           bio: g.bio ?? undefined, bioSource: g.bio ? "GitHub bio" : undefined, link: g.html_url,
         }, "github");
       }
