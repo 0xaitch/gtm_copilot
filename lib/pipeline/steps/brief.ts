@@ -94,7 +94,11 @@ export const brief: Step = {
 
       // What we still don't know
       const researchNext: string[] = [];
-      if (!p.fundingUsd) researchNext.push("Funding unknown — check funding databases / announcements (no free source connected).");
+      if (!p.fundingUsd) {
+        researchNext.push(p.backed
+          ? "Investor-backed, but round size/date unknown — check announcements for the latest raise."
+          : "Funding unknown — check funding databases / announcements (no free source connected).");
+      }
       if (!decisionMakers.some((d) => d.found && d.affiliation === "strong")) researchNext.push(`Identify the ${svc.personas.primary[0]} — check the project's X following/affiliates and team page${process.env.X_BEARER_TOKEN ? "" : " (set X_BEARER_TOKEN to automate)"}.`);
       if (postureStatus === "partial") researchNext.push("Open the listed audit/security links to confirm scope and dates.");
       if (svc.category === "web3_code" && !p.codeLoc) researchNext.push("Size the codebase (repo access or scope doc) for a quote.");

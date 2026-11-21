@@ -173,7 +173,7 @@ function pruneSegments(facts: Fact[], sources: Source[]): Fact[] {
     .filter((f) => f.key !== FK.segment || keep.has(f.id))
     .map((f) => {
       const c = counts.find((x) => x.id === f.id);
-      return c ? { ...f, confidence: Math.min(0.95, 0.5 + c.n * 0.05) } : f;
+      return c ? { ...f, confidence: Math.min(0.85, 0.5 + c.n * 0.05) } : f; // keyword guesses stay below structured data (≥ 0.9)
     });
 }
 
