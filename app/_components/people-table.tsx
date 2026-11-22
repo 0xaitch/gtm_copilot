@@ -1,5 +1,5 @@
 import type { Contact } from "@/lib/domain/types";
-import { Badge, Card, ExtLink, xUrl } from "./ui";
+import { Avatar, Badge, Card, CardHead, ExtLink, Icon, xUrl } from "./ui";
 
 const RANK = { strong: 0, medium: 1, weak: 2 } as const;
 
@@ -7,38 +7,39 @@ const RANK = { strong: 0, medium: 1, weak: 2 } as const;
 export function PeopleTable({ contacts }: { contacts: Contact[] }) {
   const rows = [...contacts].sort((a, b) => RANK[a.affiliation ?? "weak"] - RANK[b.affiliation ?? "weak"]);
   return (
-    <Card className="overflow-hidden">
-      <h3 className="border-b border-zinc-200 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500 dark:border-zinc-800">
-        Team found · {rows.length}
-      </h3>
-      <div className="overflow-x-auto">
+    <Card className="p-5">
+      <CardHead icon={<Icon.users />} title="Team found" tone="sky" note={`${rows.length} people · strongest evidence first`} />
+      <div className="mt-4 overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead className="text-xs text-zinc-500">
-            <tr className="border-b border-zinc-200 dark:border-zinc-800">
-              <th className="px-4 py-1.5 font-medium">Name</th>
-              <th className="px-2 py-1.5 font-medium">Role</th>
-              <th className="px-2 py-1.5 font-medium">Link</th>
-              <th className="px-2 py-1.5 font-medium">Confidence</th>
-              <th className="px-4 py-1.5 font-medium">Why we think so</th>
+          <thead className="text-xs uppercase tracking-wider text-faint">
+            <tr className="border-b border-line">
+              <th className="py-2 pr-3 font-medium">Person</th>
+              <th className="px-3 py-2 font-medium">Link</th>
+              <th className="px-3 py-2 font-medium">Confidence</th>
+              <th className="py-2 pl-3 font-medium">Why we think so</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((c) => (
-              <tr key={`${c.name}-${c.handle}-${c.role}`} className="border-b border-zinc-100 align-top last:border-0 dark:border-zinc-800/60">
-                <td className="whitespace-nowrap px-4 py-1.5 font-medium">
-                  {c.name ?? c.handle ?? "—"}
-                  {c.fromHint && <> <Badge tone="info">added by you</Badge></>}
+              <tr key={`${c.name}-${c.handle}-${c.role}`} className="border-b border-line/70 align-top last:border-0">
+                <td className="py-2.5 pr-3">
+                  <div className="flex items-center gap-3">
+                    <Avatar name={c.name ?? c.handle ?? "?"} />
+                    <div className="min-w-0">
+                      <p className="font-medium">{c.name ?? c.handle ?? "—"} {c.fromHint && <Badge tone="info">added by you</Badge>}</p>
+                      <p className="text-xs text-muted">{c.role}</p>
+                    </div>
+                  </div>
                 </td>
-                <td className="whitespace-nowrap px-2 py-1.5">{c.role}</td>
-                <td className="whitespace-nowrap px-2 py-1.5">
+                <td className="whitespace-nowrap px-3 py-2.5 font-mono text-xs">
                   {c.handle ? <ExtLink href={xUrl(c.handle)}>{c.handle}</ExtLink>
-                    : c.sourceUrl ? <ExtLink href={c.sourceUrl}>profile</ExtLink> : <span className="text-zinc-400">—</span>}
-                  {c.followers != null && <span className="ml-1 text-xs tabular-nums text-zinc-500">{c.followers.toLocaleString()}</span>}
+                    : c.sourceUrl ? <ExtLink href={c.sourceUrl}>profile</ExtLink> : <span className="text-faint">—</span>}
+                  {c.followers != null && <span className="ml-1.5 text-faint">{c.followers.toLocaleString()}</span>}
                 </td>
-                <td className="px-2 py-1.5">
+                <td className="px-3 py-2.5">
                   {c.affiliation && <Badge tone={c.affiliation === "strong" ? "good" : c.affiliation === "medium" ? "warn" : "muted"}>{c.affiliation}</Badge>}
                 </td>
-                <td className="max-w-md px-4 py-1.5 text-xs text-zinc-500" title={c.bio ? `Bio: ${c.bio}` : undefined}>{c.evidence}</td>
+                <td className="max-w-md py-2.5 pl-3 text-xs text-muted" title={c.bio ? `Bio: ${c.bio}` : undefined}>{c.evidence}</td>
               </tr>
             ))}
           </tbody>

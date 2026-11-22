@@ -95,6 +95,8 @@ function toClient(result: AnalysisContext, rubrik: Rubrik) {
       name: rubrik.name,
       thesisMinScore: rubrik.scoring.thesisMinScore,
       services: rubrik.services.map(({ key, name }) => ({ key, name })),
+      // outreach templates from the playbook, filled in on the page with this project's details
+      templates: rubrik.templates.map(({ id, service, channel, subject, body }) => ({ id, service, channel, subject, body })),
     },
   };
 }
