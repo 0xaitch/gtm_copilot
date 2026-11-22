@@ -20,12 +20,12 @@ async function SearchFromUrl({ searchParams, playbook }: { searchParams: PagePro
   return <AnalyzeForm initialQuery={initialQuery} playbook={playbook} />;
 }
 
-/** The playbook name and size for the header pill (never the playbook's content). */
+/** How many services the playbook covers, for the header pill (never its name or content). */
 async function playbookInfo(): Promise<PlaybookInfo | undefined> {
   "use cache"; // read once and reused; the playbook file rarely changes
   try {
     const r = await loadPreset(defaultPreset());
-    return { name: r.name, services: r.services.length };
+    return { services: r.services.length };
   } catch {
     return undefined;
   }

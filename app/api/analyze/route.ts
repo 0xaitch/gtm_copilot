@@ -92,7 +92,6 @@ function toClient(result: AnalysisContext, rubrik: Rubrik) {
     sources: sources.map(({ id, url, kind, fetchedAt }) => ({ id, url, kind, fetchedAt })),
     // display names for service keys, and the score a service needs before it gets a brief
     rubrik: {
-      name: rubrik.name,
       thesisMinScore: rubrik.scoring.thesisMinScore,
       services: rubrik.services.map(({ key, name }) => ({ key, name })),
       // outreach templates from the playbook, filled in on the page with this project's details

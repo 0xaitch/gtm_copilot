@@ -4,7 +4,7 @@ import type { StageName } from "@/lib/pipeline/types";
 export interface OutreachTemplate { id: string; service: string; channel: Channel; subject?: string; body: string }
 
 /** The playbook as the page sees it before any analysis (header pill). */
-export interface PlaybookInfo { name: string; services: number }
+export interface PlaybookInfo { services: number }
 
 /** What /api/analyze returns (raw page text stripped). */
 export interface AnalysisResult {
@@ -24,7 +24,7 @@ export interface AnalysisResult {
   notes?: string[];
   usage?: { x?: { userReads: number; postReads: number; estUsd: number } };
   halted?: { stage: string; reason: string };
-  rubrik?: { name: string; thesisMinScore: number; services: { key: string; name: string }[]; templates?: OutreachTemplate[] };
+  rubrik?: { thesisMinScore: number; services: { key: string; name: string }[]; templates?: OutreachTemplate[] };
   error?: string;
 }
 

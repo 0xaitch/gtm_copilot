@@ -354,7 +354,6 @@ function Footer({ res }: { res: AnalysisResult }) {
         {res.sources.length} sources · {res.facts.length} facts
         {res.project.resolutionConfidence != null && <> · site match {Math.round(res.project.resolutionConfidence * 100)}%</>}
         {res.usage?.x ? <> · X API ≈ ${res.usage.x.estUsd.toFixed(2)}</> : null}
-        {res.rubrik && <> · playbook: {res.rubrik.name}</>}
       </p>
       {res.notes?.map((n) => <p key={n}>{n}</p>)}
       {!!res.sources.length && (

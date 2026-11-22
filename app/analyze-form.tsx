@@ -164,7 +164,7 @@ export function AnalyzeForm({ initialQuery, playbook }: { initialQuery?: string;
           {playbook && (
             <span className="ml-auto hidden items-center gap-2 rounded-full border border-line-2 px-4 py-1.5 text-sm text-muted sm:inline-flex"
               title="Services, triggers, buyer roles and templates come from this playbook">
-              <span className="h-2 w-2 rounded-full bg-accent" /> Playbook: {playbook.name} · {playbook.services} services
+              <span className="h-2 w-2 rounded-full bg-accent" /> Playbook loaded · {playbook.services} services
             </span>
           )}
         </div>
