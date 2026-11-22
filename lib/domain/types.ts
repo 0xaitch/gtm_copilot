@@ -45,11 +45,13 @@ export type Fact = z.infer<typeof Fact>;
 export const Source = z.object({
   id: z.string(),
   url: z.string(),
-  kind: z.enum(["page", "x_post", "telegram", "forum", "github", "listing", "news"]),
+  kind: z.enum(["page", "x_post", "telegram", "forum", "github", "listing", "news", "blog"]),
   fetchedAt: z.string(),
   text: z.string(),
   /** X profile links found on the page (team pages, footers). */
   xLinks: z.array(z.string()).optional(),
+  /** Fetched because you added the link as a hint (may be another site) — not crawled from the project's site. */
+  fromHint: z.boolean().optional(),
 });
 export type Source = z.infer<typeof Source>;
 
@@ -65,6 +67,8 @@ export const Contact = z.object({
   evidence: z.string().optional(),
   sourceUrl: z.string().optional(),
   followers: z.number().optional(),
+  /** You added this person (or a page naming them) as a hint. */
+  fromHint: z.boolean().optional(),
 });
 export type Contact = z.infer<typeof Contact>;
 

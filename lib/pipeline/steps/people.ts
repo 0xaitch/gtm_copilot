@@ -3,7 +3,8 @@
  *
  * Free sources (default):
  *  1. X profiles linked from the project's own website pages (team/about/footer)
- *  2. GitHub top contributors (name, bio, company, X handle)          — optional GITHUB_TOKEN
+ *  0. Handles you add as hints (checked like any other lead, never trusted blindly)
+ *  2. GitHub top contributors and public org members (name, bio, company, X handle) — optional GITHUB_TOKEN
  *  3. Governance forum (Discourse) team groups (name, title, bio)
  *  4. Farcaster (Neynar free tier, NEYNAR_API_KEY): bios for X handles found above
  *     (users who verified that X account) + search on the project name
@@ -23,13 +24,14 @@ import { coreHandle } from "@/lib/connectors/defillama";
 import {
   farcasterByX, farcasterChannelLead, farcasterFollowing, farcasterSearch, findProjectAccount, neynarConfigured,
 } from "@/lib/connectors/farcaster";
-import { githubPeople, parseGithubOwner } from "@/lib/connectors/github";
+import { githubOrgMembers, githubPeople, githubRateLimited, parseGithubOwner } from "@/lib/connectors/github";
 import type { XUser } from "@/lib/connectors/x";
 import { FK } from "@/lib/domain/fact-keys";
 import type { Contact, Fact } from "@/lib/domain/types";
-import { bioMentionsProject, isFormer, roleFromBio } from "@/lib/signals/people";
+import { bioMentionsProject, isFormer, roleFromBio, roleNamesOtherOrg } from "@/lib/signals/people";
 import type { Step } from "../types";
 import { brandFromDomain, isGenericName, newId } from "../util";
+import { ownSiteChecker } from "./extract";
 import { buildProfile } from "./profile";
 
 const MAX_LOOKUPS = Number(process.env.X_MAX_PEOPLE_LOOKUPS ?? 30);
@@ -41,7 +43,7 @@ const MAX_CONTACTS = 15;
 const DECISION_ROLES = /founder|ceo|cto|ciso|chief|head of|vp |lead/i;
 const SECURITY_TALK = /\b(audit|security|exploit|vulnerab|bug bounty|pentest|mainnet|testnet|launch)\w*/i;
 
-type Via = "site" | "site-name" | "github" | "forum" | "forum-brand" | "fc-following" | "farcaster" | "bluesky" | "affiliate" | "search";
+type Via = "hint" | "hint-page" | "site" | "site-name" | "github" | "github-org" | "forum" | "forum-brand" | "fc-following" | "farcaster" | "bluesky" | "affiliate" | "search";
 
 interface Candidate {
   handle?: string;          // X handle (no @)
@@ -86,10 +88,16 @@ export const people: Step = {
       cands.set(k, cur);
     };
 
+    // 0. your hints — added first so they get bio lookups before anything else
+    for (const h of ctx.hints?.handles ?? []) add(`x:${h}`, { handle: h, link: `https://x.com/${h}`, note: "added by you" }, "hint");
+
     // 1. website-linked X profiles (skip pages linking dozens — partner/ecosystem lists)
+    // Pages you added from other sites are hints, not the project's own website.
+    const ownSite = ownSiteChecker(project.domain);
     for (const s of ctx.sources) {
       if (s.kind !== "page" || !s.xLinks?.length || s.xLinks.length > 25) continue;
-      for (const h of s.xLinks) add(`x:${h}`, { handle: h, link: `https://x.com/${h}`, note: `linked from ${s.url}` }, "site");
+      const own = ownSite(s);
+      for (const h of s.xLinks) add(`x:${h}`, { handle: h, link: `https://x.com/${h}`, note: `linked from ${s.url}${own ? "" : " (a page you added)"}` }, own ? "site" : "hint-page");
     }
 
     // 2. GitHub contributors
@@ -100,6 +108,17 @@ export const people: Step = {
           handle: g.twitter_username ?? undefined, name: g.name ?? g.login, company: g.company ?? undefined,
           bio: g.bio ?? undefined, bioSource: g.bio ? "GitHub bio" : undefined, link: g.html_url,
         }, "github");
+      }
+      for (const g of await githubOrgMembers(owner)) {
+        add(`gh:${g.login}`, {
+          handle: g.twitter_username ?? undefined, name: g.name ?? g.login, company: g.company ?? undefined,
+          bio: g.bio ?? undefined, bioSource: g.bio ? "GitHub bio" : undefined, link: g.html_url,
+          note: `public member of the ${owner} GitHub org`,
+        }, "github-org");
+      }
+      if (githubRateLimited()) {
+        const w = "GitHub rate limit hit — some contributors may be missing. Set GITHUB_TOKEN for complete data.";
+        if (!warnings.includes(w)) warnings.push(w);
       }
     }
 
@@ -191,8 +210,10 @@ export const people: Step = {
       if (c.name && brandNames.has(norm(c.name))) continue;
       const text = [c.bio, c.title].filter(Boolean).join(" · ");
       const hit = roleFromBio(text);
-      const role = hit && !isFormer(text, hit.phrase) ? hit : null;
       const mention = bioMentionsProject(text, ref) ?? (c.company ? bioMentionsProject(c.company, ref) : null);
+      // "CTO @OtherCo" with no mention of this project: the role is held elsewhere, not here
+      const roleElsewhere = !!hit && !mention && roleNamesOtherOrg(text, hit.phrase);
+      const role = hit && !isFormer(text, hit.phrase) && !roleElsewhere ? hit : null;
       const why: string[] = [];
       let affiliation: Contact["affiliation"] | undefined;
 
@@ -203,12 +224,17 @@ export const people: Step = {
       if (c.via.has("site-name") && mention) { affiliation = "strong"; why.push(c.notes.find((n) => n.startsWith("same name")) ?? "named on project site"); }
       if (!affiliation && mention) { affiliation = "medium"; why.push(`${c.bioSource ?? "bio"} mentions "${mention}"`); }
       if (!affiliation && c.via.has("site-name")) { affiliation = "medium"; why.push(`${c.notes.find((n) => n.startsWith("same name")) ?? "name match"} — verify it's the same person`); }
+      if (c.via.has("github-org") && (role || mention)) { affiliation = "strong"; why.push(c.notes.find((n) => n.startsWith("public member")) ?? "public GitHub org member"); }
+      if (!affiliation && c.via.has("github-org")) { affiliation = "medium"; why.push(c.notes.find((n) => n.startsWith("public member")) ?? "public GitHub org member"); }
       if (!affiliation && c.via.has("github") && (role || mention)) { affiliation = "medium"; why.push("top GitHub contributor"); }
       if (!affiliation && c.via.has("forum")) { affiliation = "medium"; why.push(c.notes.find((n) => n.startsWith("member of")) ?? "forum team group"); }
       if (!affiliation && c.via.has("site") && c.bio) { affiliation = "medium"; why.push("linked from project website"); }
+      if (!affiliation && c.via.has("hint")) { affiliation = "medium"; why.push("added by you — not yet confirmed in public sources"); }
+      else if (c.via.has("hint")) why.push("added by you");
       if (!affiliation) continue;
       // Open-network search hits without a stated role are usually project/fan accounts, not people
       const onlySearch = [...c.via].every((v) => v === "bluesky" || v === "farcaster" || v === "search");
+      // (a hint is never "only search": you put it there)
       if (onlySearch && !role) continue;
       if (c.via.has("fc-following")) why.push(c.notes.find((n) => /Farcaster/.test(n)) ?? "followed by the project's Farcaster account");
       if (c.via.has("github") && !why.includes("top GitHub contributor")) why.push("top GitHub contributor");
@@ -220,6 +246,7 @@ export const people: Step = {
         contact: {
           name: c.name, handle: c.handle ? `@${c.handle}` : undefined, role: roleName, bio: c.bio,
           affiliation, evidence: why.join("; "), channel: c.handle ? "x" : undefined, followers: c.followers,
+          fromHint: c.via.has("hint") || undefined,
           sourceUrl: c.handle ? `https://x.com/${c.handle}` : [...c.links][0],
         },
       });

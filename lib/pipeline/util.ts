@@ -46,6 +46,27 @@ export function brandFromDomain(domain?: string): string | undefined {
 
 export const titleCase = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+const squash = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+/** "SOC 2, HIPAA, ISO 27001 Compliance" — a tagline, not a name. */
+const looksLikeTagline = (s: string) => s.length > 40 || s.split(/\s+/).length > 4 || /,/.test(s);
+
+/**
+ * The project's display name. Prefers the site's declared name (og:site_name), then the title part
+ * matching the domain brand ("Home | Vanta" → "Vanta"), then a short first title part, then the brand.
+ */
+export function pickProjectName(title: string | undefined, siteName: string | undefined, domain: string | undefined): string | undefined {
+  const brand = brandFromDomain(domain);
+  if (siteName && !isGenericName(siteName) && !looksLikeTagline(siteName)) return siteName;
+  const parts = (title ?? "").split(/\s+[|\-–—:·•]\s+/).map((p) => p.trim()).filter(Boolean);
+  if (brand) {
+    const match = parts.find((p) => squash(p) === squash(brand) || (squash(p).includes(squash(brand)) && !looksLikeTagline(p)));
+    if (match) return match;
+  }
+  const first = parts[0];
+  if (first && !isGenericName(first) && !looksLikeTagline(first)) return first;
+  return brand ? titleCase(brand) : first;
+}
+
 /** "app.ethena.fi" → "ethena.fi", "www.example.co.uk" → "example.co.uk". */
 export function rootDomain(domain?: string): string | undefined {
   if (!domain) return undefined;

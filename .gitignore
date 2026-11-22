@@ -43,3 +43,9 @@ next-env.d.ts
 # real tenant playbooks / rubriks — never commit
 rubrik/private/
 !.env.example
+
+# evaluation: local Python env, notebook checkpoints, snapshots (they contain people's names)
+eval/.venv/
+eval/snapshots/
+.ipynb_checkpoints/
+__pycache__/

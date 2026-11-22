@@ -52,6 +52,25 @@ describe("factsFromPosts", () => {
     expect(facts("ExampleFi partners with OtherCo").some((x) => x.key === FK.trigger)).toBe(true);
   });
 
+  it("doesn't credit news where the project only describes someone else's product", () => {
+    const names = ["morpho"];
+    const types = (t: string, own = false) => factsFromPosts([post(t, own ? "x" : "news")], { ownChannel: own, names })
+      .filter((x) => x.key === FK.trigger).map((x) => (x.value as { type: string }).type);
+    expect(types("Uniswap Rolls Out Morpho-Powered Crypto Lending Vaults and Token Launch Discovery Hub")).toEqual([]);
+    expect(types("OtherCo vaults built on Morpho are now live")).toEqual([]);
+    expect(types("Morpho launched Morpho-powered vaults for institutions")).toContain("product_launch");
+  });
+
+  it("treats 'Token Launch <Name>' and 'token launch platform' as product names, not a TGE", () => {
+    const types = (t: string) => factsFromPosts([post(t)], { ownChannel: true })
+      .filter((x) => x.key === FK.trigger).map((x) => (x.value as { type: string }).type);
+    expect(types("Check out the new Token Launch Discovery Hub")).not.toContain("token_launch");
+    expect(types("Our token launch platform is getting an upgrade")).not.toContain("token_launch");
+    expect(types("Token launch on Dec 3 — details soon")).toContain("token_launch");
+    expect(types("TGE is set for next week")).toContain("token_launch");
+    expect(types("The $EX Token Launch Is Scheduled For Friday")).toContain("token_launch");
+  });
+
   it("accepts '<amount> series A round' phrasing", () => {
     const f = factsFromPosts([post("ExampleFi announces $30M Series A round")], { ownChannel: false });
     expect(f.find((x) => x.key === FK.funding)?.value).toEqual({ amountUsd: 30_000_000, round: "Series A" });

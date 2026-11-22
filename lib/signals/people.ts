@@ -50,6 +50,17 @@ export function bioMentionsProject(bio: string | null | undefined, p: { handle?:
   return null;
 }
 
+/**
+ * Does the bio tie this role to a named organisation ("CTO @OtherCo", "Co-founder of OtherCo")?
+ * Call only when the bio doesn't mention the project — then that organisation is someone else.
+ */
+export function roleNamesOtherOrg(bio: string, phrase: string): boolean {
+  const i = bio.toLowerCase().indexOf(phrase.toLowerCase());
+  if (i < 0) return false;
+  const after = bio.slice(i + phrase.length, i + phrase.length + 40);
+  return /^\s*,?\s*(?:@\s?[\w.-]+|(?:at|of|for|@)\s+@?[A-Z0-9][\w.-]*)/.test(after);
+}
+
 /** Former roles shouldn't count ("ex-CTO @foo", "prev. founder"). */
 export const isFormer = (bio: string, phrase: string) =>
   new RegExp(`\\b(ex[- ]?|former|prev(iously|\\.)?|past)\\s*${phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i").test(bio);

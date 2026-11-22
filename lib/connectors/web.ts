@@ -142,6 +142,17 @@ export function extractTitle(html: string): string | undefined {
   return html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1]?.trim() || undefined;
 }
 
+/** The site's own name from <meta property="og:site_name"> or application-name (attributes in any order). */
+export function extractSiteName(html: string): string | undefined {
+  for (const tag of html.match(/<meta\b[^>]*>/gi) ?? []) {
+    if (!/\b(?:property|name)\s*=\s*["'](?:og:site_name|application-name)["']/i.test(tag)) continue;
+    const v = tag.match(/\bcontent\s*=\s*"([^"]*)"|\bcontent\s*=\s*'([^']*)'/i);
+    const name = (v?.[1] ?? v?.[2])?.trim();
+    if (name) return name;
+  }
+  return undefined;
+}
+
 /** X/Twitter profile handles linked from a page (team pages, footers, author bylines). */
 export function extractXHandles(links: string[]): string[] {
   const out = new Set<string>();

@@ -73,6 +73,9 @@ export const discover: Step = {
       }
     }
 
-    return { links: picks.slice(0, MAX_PAGES), sources: [...ctx.sources, ...sources], warnings };
+    // Your hint URLs are read first and may be on other sites (a team page, an article, a blog post).
+    const hinted = (ctx.hints?.urls ?? []).map(clean).filter((u) => !seen.has(u) && !SKIP.test(u));
+    const links = [...new Set([...hinted, ...picks])].slice(0, MAX_PAGES);
+    return { links, sources: [...ctx.sources, ...sources], warnings };
   },
 };

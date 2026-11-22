@@ -1,7 +1,9 @@
 /**
  * GitHub REST API — public org/user metadata only.
  * Unauthenticated: 60 req/hour. Set GITHUB_TOKEN (no scopes needed) for 5,000/hour.
- * One analysis uses ~10 requests.
+ * One analysis uses ~25 requests with a token. Without one, the optional lookups (org search,
+ * org members) are skipped so an analysis stays at ~20 and the next run isn't starved.
+ * A rate limit is remembered process-wide until GitHub's reset time, so later calls skip quickly.
  */
 
 export interface GhRepo {
@@ -40,8 +42,17 @@ export function parseGithubOwner(url?: string): string | null {
   return m && !["orgs", "features", "about", "sponsors", "topics"].includes(m[1].toLowerCase()) ? m[1] : null;
 }
 
+const hasToken = () => !!process.env.GITHUB_TOKEN;
+
+/** Shared across all calls in this process: once GitHub says we're out, stop asking until reset. */
+const limit = { until: 0 };
+/** Is GitHub currently rate-limiting us? (lets steps warn that GitHub data is incomplete) */
+export const githubRateLimited = () => Date.now() < limit.until;
+/** Tests only. */
+export const resetGithubLimit = () => { limit.until = 0; orgCache.clear(); };
+
 async function gh<T>(path: string, state: { rateLimited: boolean }): Promise<T | null> {
-  if (state.rateLimited) return null;
+  if (githubRateLimited()) { state.rateLimited = true; return null; }
   const headers: Record<string, string> = {
     accept: "application/vnd.github+json",
     "user-agent": "security-gtm-copilot",
@@ -50,7 +61,12 @@ async function gh<T>(path: string, state: { rateLimited: boolean }): Promise<T |
   try {
     const res = await fetch(`${API}${path}`, { headers, signal: AbortSignal.timeout(15_000) });
     if (res.status === 403 || res.status === 429) {
-      if (res.headers.get("x-ratelimit-remaining") === "0" || res.status === 429) state.rateLimited = true;
+      if (res.headers.get("x-ratelimit-remaining") === "0" || res.status === 429) {
+        state.rateLimited = true;
+        const reset = Number(res.headers.get("x-ratelimit-reset")) * 1000; // epoch seconds
+        const retry = Number(res.headers.get("retry-after")) * 1000;
+        limit.until = reset > Date.now() ? reset : Date.now() + (retry > 0 ? retry : 60_000);
+      }
       return null;
     }
     if (!res.ok) return null;
@@ -140,4 +156,72 @@ export async function githubPeople(owner: string, maxPeople = 8): Promise<GhPers
     return u ? { ...u, contributions } : null;
   }));
   return people.filter((p): p is GhPerson => !!p);
+}
+
+export interface GhOrg {
+  login: string;
+  name?: string | null;
+  blog?: string | null;              // website
+  twitter_username?: string | null;
+  html_url: string;
+}
+
+/**
+ * X handle → GitHub org that lists that handle on its profile (and usually its website).
+ * Tries exact logins first, then GitHub's org search; only accepts an org whose profile names the
+ * same X handle, so look-alike orgs are rejected. ~2–8 requests (≤2 without a token: no search).
+ * Results are cached for the process, so resolve and enrich don't repeat the same lookup.
+ */
+const orgCache = new Map<string, { at: number; org: GhOrg | null }>();
+const ORG_CACHE_MS = 30 * 60_000;
+export async function githubOrgForHandle(handle: string, guesses: string[] = []): Promise<GhOrg | null> {
+  const want = handle.toLowerCase().replace(/^@/, "");
+  const key = [want, ...guesses.map((g) => g.toLowerCase())].join("|");
+  const hit = orgCache.get(key);
+  if (hit && Date.now() - hit.at < ORG_CACHE_MS) return hit.org;
+  const state = { rateLimited: false };
+  const org = await findOrgForHandle(want, guesses, state);
+  if (!state.rateLimited) orgCache.set(key, { at: Date.now(), org }); // don't cache a miss caused by the limit
+  return org;
+}
+
+async function findOrgForHandle(want: string, guesses: string[], state: { rateLimited: boolean }): Promise<GhOrg | null> {
+  const maxTries = hasToken() ? 8 : 2;
+  const matches = (o: GhOrg | null) => !!o && o.twitter_username?.toLowerCase() === want;
+  const tried = new Set<string>();
+  const check = async (login: string) => {
+    if (tried.has(login.toLowerCase()) || tried.size >= maxTries) return null;
+    tried.add(login.toLowerCase());
+    const o = await gh<GhOrg>(`/users/${encodeURIComponent(login)}`, state);
+    return matches(o) ? o : null;
+  };
+  for (const login of [want, ...guesses]) {
+    if (!/^[A-Za-z0-9-]{1,39}$/.test(login)) continue;
+    const o = await check(login);
+    if (o) return o;
+  }
+  if (!hasToken()) return null; // search has its own, tighter limit — only with a token
+  for (const q of [...new Set([want, ...guesses])].slice(0, 2)) {
+    const found = await gh<{ items: { login: string; type: string }[] }>(
+      `/search/users?q=${encodeURIComponent(`${q} type:org`)}&per_page=5`, state);
+    for (const item of found?.items ?? []) {
+      const o = await check(item.login);
+      if (o) return o;
+    }
+  }
+  return null;
+}
+
+/**
+ * People who publicly list themselves as members of the org. GitHub verifies membership, and
+ * only the member can make it public — a strong sign they work there (or did). ~1 + N requests.
+ * Skipped without a token: contributors already cover most of the team at a fraction of the quota.
+ */
+export async function githubOrgMembers(owner: string, max = 10): Promise<Omit<GhPerson, "contributions">[]> {
+  if (!hasToken()) return [];
+  const state = { rateLimited: false };
+  const members = await gh<{ login: string; type: string }[]>(`/orgs/${owner}/public_members?per_page=50`, state);
+  const logins = (members ?? []).filter((m) => m.type === "User").map((m) => m.login).slice(0, max);
+  const people = await Promise.all(logins.map((login) => gh<Omit<GhPerson, "contributions">>(`/users/${login}`, state)));
+  return people.filter((p): p is Omit<GhPerson, "contributions"> => !!p);
 }

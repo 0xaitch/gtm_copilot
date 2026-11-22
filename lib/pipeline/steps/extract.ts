@@ -8,7 +8,7 @@ import type { Fact, Segment, Source, TriggerType } from "@/lib/domain/types";
 import { Segment as SegmentEnum, TriggerType as TriggerEnum } from "@/lib/domain/types";
 import { FK } from "@/lib/domain/fact-keys";
 import type { Step } from "../types";
-import { dateNear, newId, parseUsdAmount, snippet } from "../util";
+import { dateNear, newId, parseUsdAmount, rootDomain, snippet } from "../util";
 
 
 /* ---------------- Heuristic extractor ---------------- */
@@ -23,6 +23,13 @@ const trig = (type: TriggerType, conf = 0.6): Rule["build"] => (m, s) => ({
   key: FK.trigger, kind: "fact", confidence: conf,
   value: { type }, observedAt: dateNear(s.text, m.index ?? 0),
 });
+
+/** Skip a match whose sentence negates it just before ("we don't partner with…", "not hiring"). */
+const NEGATION = /\b(?:don['’]?t|do not|doesn['’]?t|does not|never|won['’]?t|will not|not|no longer)\s+(?:\w+\s+){0,2}$/i;
+const unlessNegated = (build: Rule["build"]): Rule["build"] => (m, s) => {
+  const before = s.text.slice(Math.max(0, (m.index ?? 0) - 40), m.index ?? 0);
+  return NEGATION.test(before) ? null : build(m, s);
+};
 
 /** Segment detectors: [pattern, segment]. Counted across all sources to pick dominant segments. */
 export const SEGMENT_RULES: [RegExp, Segment][] = [
@@ -83,8 +90,10 @@ const RULES: Rule[] = [
   { re: /\b(raised|raises|seed round|series [a-c]|strategic round)\b/i, build: trig("funding", 0.7) },
   // evergreen "backed by / has raised from" → investor-backed (ability to pay), not a why-now trigger
   { re: /\b(backed by|has raised|raised (money|capital|funding) from|investors include|our investors)\b/i, build: () => ({ key: FK.funding, value: { backed: true }, kind: "fact", confidence: 0.7 }) },
-  { re: /\b(partners? with|partnership with|strategic partnership)\b/i, build: trig("partnership", 0.5) },
-  { re: /\b(hiring|we're hiring|join us)\b[^.]{0,60}\b(security|compliance|CISO)\b/i, build: trig("security_hiring", 0.6) },
+  // Needs a named partner ("partners with Chainlink"), not "we don't partner with anyone else".
+  { re: /\b(?:[Pp]artner(?:s|ed|ing)? with|[Pp]artnership with|[Ss]trategic [Pp]artnership with)\s+@?[A-Z0-9]/, build: unlessNegated(trig("partnership", 0.5)) },
+  // A sentence about hiring for a security role — not a nav menu reading "Careers HIRING … Security".
+  { re: /\b(?:we(?:'re| are) hiring|(?:is|are) hiring|hiring (?:a|an|for)|join our (?:security|compliance) team)\b[^.\n]{0,60}?\b(?:security|compliance|CISO)\b/i, build: unlessNegated(trig("security_hiring", 0.6)) },
 
   // languages
   { re: /\bSolidity\b/, build: () => ({ key: FK.language, value: "solidity", kind: "fact", confidence: 0.7 }) },
@@ -111,15 +120,26 @@ export function foundersIn(text: string): { name: string; index: number; phrase:
   return out;
 }
 
-export function heuristicExtract(sources: Source[]): Fact[] {
+/**
+ * `isOwn` says whether a source is on the project's own site. Pages from elsewhere (links you added
+ * as hints) only contribute people, at medium affiliation — a news article naming "Jane Doe, CEO"
+ * may be about a different company.
+ */
+export function heuristicExtract(sources: Source[], isOwn: (s: Source) => boolean = () => true): Fact[] {
   const facts: Fact[] = [];
   const seen = new Set<string>();
   for (const s of sources) {
-    for (const rule of RULES) {
-      const m = s.text.match(rule.re);
-      if (!m) continue;
-      const f = rule.build(m, s);
-      if (!f) continue;
+    const own = isOwn(s);
+    const affiliation = own ? "strong" : "medium";
+    for (const rule of own ? RULES : []) {
+      // first match the rule accepts (a rule may reject one, e.g. a negated mention, and accept a later one)
+      let m: RegExpMatchArray | undefined;
+      let f: ReturnType<Rule["build"]> = null;
+      for (const cand of s.text.matchAll(new RegExp(rule.re.source, rule.re.flags.replace("g", "") + "g"))) {
+        f = rule.build(cand, s);
+        if (f) { m = cand; break; }
+      }
+      if (!m || !f) continue;
       const dedupe = `${f.key}:${JSON.stringify(f.value)}`;
       if (seen.has(dedupe)) continue;
       seen.add(dedupe);
@@ -130,7 +150,7 @@ export function heuristicExtract(sources: Source[]): Fact[] {
       if (seen.has(dedupe)) continue;
       seen.add(dedupe);
       facts.push({
-        id: newId("fact"), key: FK.contact, value: { name: m[1], role: m[2], affiliation: "strong", evidence: "named with role on project website", sourceUrl: s.url }, kind: "fact",
+        id: newId("fact"), key: FK.contact, value: { name: m[1], role: m[2], affiliation, evidence: own ? "named with role on project website" : `named with role on ${s.url} (a page you added)`, sourceUrl: s.url }, kind: "fact",
         confidence: 0.6, sourceUrl: s.url, quote: snippet(s.text, m.index ?? 0, m[0].length, 30),
       });
     }
@@ -140,12 +160,28 @@ export function heuristicExtract(sources: Source[]): Fact[] {
       seen.add(dedupe);
       facts.push({
         id: newId("fact"), key: FK.contact,
-        value: { name, role: "Co-founder", affiliation: "strong", evidence: "named as founder on project site/docs", sourceUrl: s.url },
+        value: { name, role: "Co-founder", affiliation, evidence: own ? "named as founder on project site/docs" : `named as founder on ${s.url} (a page you added)`, sourceUrl: s.url },
         kind: "fact", confidence: 0.75, sourceUrl: s.url, quote: snippet(s.text, index, phrase.length, 40),
       });
     }
   }
-  return pruneSegments(facts, sources);
+  return pruneSegments(facts, sources.filter(isOwn));
+}
+
+/**
+ * Is this source the project's own? Everything crawled from the site is — even a page that redirected
+ * to another host (docs on gitbook.io). Only a link you added from another site is not.
+ */
+export function ownSiteChecker(domain?: string): (s: Source) => boolean {
+  const root = rootDomain(domain) ?? domain;
+  const onDomain = (url: string) => {
+    if (!root) return true;
+    try {
+      const h = new URL(url).hostname.replace(/^www\./, "");
+      return h === root || h.endsWith(`.${root}`);
+    } catch { return false; }
+  };
+  return (s) => !s.fromHint || onDomain(s.url);
 }
 
 /**
@@ -199,9 +235,11 @@ Allowed trigger types (key="trigger", value={type}): ${TriggerEnum.options.join(
 export const extract: Step = {
   name: "extract",
   async run(ctx, { llm }) {
-    if (!llm) return { facts: heuristicExtract(ctx.sources) };
-    const facts: Fact[] = [];
-    for (const s of ctx.sources) {
+    const isOwn = ownSiteChecker(ctx.project.domain);
+    if (!llm) return { facts: heuristicExtract(ctx.sources, isOwn) };
+    // Pages you added from other sites only contribute people (medium affiliation), as in heuristic mode.
+    const facts: Fact[] = heuristicExtract(ctx.sources.filter((x) => !isOwn(x)), () => false);
+    for (const s of ctx.sources.filter(isOwn)) {
       const out = await llm.generateObject({
         system: SYSTEM,
         prompt: `SOURCE URL: ${s.url}\n\nSOURCE TEXT:\n${s.text.slice(0, 24_000)}`,

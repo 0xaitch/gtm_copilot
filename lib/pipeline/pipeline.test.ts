@@ -105,6 +105,38 @@ describe("naming", () => {
     expect(isGenericName("App")).toBe(true);
     expect(isGenericName("Ethena")).toBe(false);
   });
+
+  it("picks the project name over a tagline title", async () => {
+    const { pickProjectName } = await import("./util");
+    const { extractSiteName } = await import("@/lib/connectors/web");
+    // og:site_name wins, whatever the attribute order
+    expect(extractSiteName(`<meta content="Vanta" property="og:site_name">`)).toBe("Vanta");
+    expect(pickProjectName("SOC 2, HIPAA, ISO 27001, PCI, and GDPR Compliance", "Vanta", "vanta.com")).toBe("Vanta");
+    // tagline title, no site name → domain brand
+    expect(pickProjectName("SOC 2, HIPAA, ISO 27001, PCI, and GDPR Compliance", undefined, "vanta.com")).toBe("Vanta");
+    // the title part matching the domain, wherever it sits
+    expect(pickProjectName("The lending network | Morpho", undefined, "morpho.org")).toBe("Morpho");
+    // a short, non-generic first part is still trusted (brand differs from domain)
+    expect(pickProjectName("Uniswap Interface", undefined, "app.uniswap.org")).toBe("Uniswap Interface");
+    expect(pickProjectName("Home", undefined, "ethena.fi")).toBe("Ethena");
+  });
+});
+
+describe("footer / nav text is not a trigger", () => {
+  const src = (text: string): Source => ({ id: "s", url: "https://proj.xyz/", kind: "page", fetchedAt: NOW.toISOString(), text });
+  const triggers = (text: string) =>
+    heuristicExtract([src(text)]).filter((f) => f.key === FK.trigger).map((f) => (f.value as { type: string }).type);
+
+  it("ignores negated partnerships and nav-menu 'HIRING'", () => {
+    expect(triggers("We don't partner with anyone else. We've gone all in on Vanta.")).not.toContain("partnership");
+    expect(triggers("Company About Careers HIRING Press Security System status")).not.toContain("security_hiring");
+  });
+
+  it("still catches real ones, even after a negated mention", () => {
+    expect(triggers("Proj partners with Chainlink for price feeds.")).toContain("partnership");
+    expect(triggers("We never partner with scams. In March, Proj announced a strategic partnership with Circle.")).toContain("partnership");
+    expect(triggers("We're hiring a senior security engineer.")).toContain("security_hiring");
+  });
 });
 
 describe("forum detection", () => {
@@ -132,5 +164,66 @@ describe("founder extraction", () => {
     expect(foundersIn(t).map((x) => x.name)).toEqual(["Jane Doe", "John Smith"]);
     expect(foundersIn("Backed by Y Combinator and General Catalyst.")).toEqual([]);
     expect(foundersIn("Co-founded in 2021 by Alice Martin.").map((x) => x.name)).toEqual(["Alice Martin"]);
+  });
+});
+
+describe("GitHub org website", () => {
+  it("rejects shared hosting and profile sites as the project's website", async () => {
+    const { isProjectSite } = await import("./steps/resolve");
+    for (const u of ["https://medium.com/", "https://linktr.ee/", "https://github.io/", "https://github.com/",
+      "https://proj.substack.com/", "https://mirror.xyz/", "https://www.x.com/"]) {
+      expect(isProjectSite(u), u).toBe(false);
+    }
+    for (const u of ["https://proj.xyz/", "https://app.proj.fi/", "https://proj.github.io/", "https://proj.vercel.app/"]) {
+      expect(isProjectSite(u), u).toBe(true);
+    }
+  });
+});
+
+describe("roles held elsewhere", () => {
+  it("spots a role tied to another organisation", async () => {
+    const { roleNamesOtherOrg } = await import("@/lib/signals/people");
+    expect(roleNamesOtherOrg("CTO @OtherCo", "CTO")).toBe(true);
+    expect(roleNamesOtherOrg("Co-founder of OtherCo · builder", "Co-founder")).toBe(true);
+    expect(roleNamesOtherOrg("CTO at OtherCo", "CTO")).toBe(true);
+    expect(roleNamesOtherOrg("CTO. Building cool things", "CTO")).toBe(false);
+    expect(roleNamesOtherOrg("Smart contract engineer, Solidity", "Smart contract engineer")).toBe(false);
+  });
+});
+
+describe("trigger clean-up", () => {
+  const fact = (id: string, over: Partial<Fact> = {}): Fact => ({
+    id, key: FK.trigger, value: { type: "funding" }, kind: "fact", confidence: 0.7,
+    sourceUrl: `https://news.example/${id}`, quote: id, observedAt: "2026-06-09T00:00:00Z", ...over,
+  });
+
+  it("merges many reports of one event into one trigger, keeping all evidence", async () => {
+    const { triggers } = await import("./steps/triggers");
+    const facts = [
+      fact("a", { kind: "inference" }),
+      fact("b"),
+      fact("c", { observedAt: "2026-06-10T00:00:00Z" }),
+      fact("d", { observedAt: "2026-02-01T00:00:00Z" }),        // an earlier, separate round
+      fact("e", { value: { type: "partnership" } }),
+    ];
+    const out = await triggers.run({ ...emptyContext("x"), facts }, deps);
+    const funding = out.triggers!.filter((t) => t.type === "funding");
+    expect(funding).toHaveLength(2);
+    const june = funding.find((t) => t.occurredAt.startsWith("2026-06"))!;
+    expect(june.occurredAt).toBe("2026-06-09T00:00:00Z");       // earliest report
+    expect(june.factIds[0]).toBe("b");                           // verified fact leads (note + link)
+    expect(new Set(june.factIds)).toEqual(new Set(["a", "b", "c"]));
+    expect(out.triggers!.filter((t) => t.type === "partnership")).toHaveLength(1);
+  });
+
+  it("ignores triggers found on partner, customer and integration pages", async () => {
+    const { triggers, isEvergreenPage } = await import("./steps/triggers");
+    expect(isEvergreenPage("https://www.vanta.com/partners/partner-program")).toBe(true);
+    expect(isEvergreenPage("https://proj.xyz/customers")).toBe(true);
+    expect(isEvergreenPage("https://proj.xyz/blog/partnering-with-circle")).toBe(false);
+    expect(isEvergreenPage("https://proj.xyz/")).toBe(false);
+    const facts = [fact("p", { value: { type: "partnership" }, sourceUrl: "https://www.vanta.com/partners/partner-program" })];
+    const out = await triggers.run({ ...emptyContext("x"), facts }, deps);
+    expect(out.triggers).toEqual([]);
   });
 });

@@ -11,7 +11,7 @@ export interface DatedPost {
   text: string;
   at: string;          // ISO
   url: string;
-  origin: "x" | "telegram" | "news" | "forum";
+  origin: "x" | "telegram" | "news" | "forum" | "blog";
 }
 
 const AMOUNT = String.raw`\$\s?\d+(?:\.\d+)?\s?(?:k|m|mm|million|b|billion)\b`;
@@ -51,9 +51,39 @@ const OTHER_SUBJECT = /\b(competitor|rival|challenger|clone|fork|former|alumni|e
  * "Infrared raises $14M for Berachain…" → not Berachain's raise.
  */
 export function isSubject(text: string, matchIndex: number, names: string[]): boolean {
-  const lead = text.slice(0, matchIndex);
+  const lead = withoutModifierUses(text.slice(0, matchIndex), names);
   return mentionsProject(lead, names) && !OTHER_SUBJECT.test(lead);
 }
+
+const MODIFIER = String.raw`(?:powered|based|backed|built|native|enabled|integrated|compatible|style|like|curated)`;
+/**
+ * Drops uses of the brand that only describe something else: "Uniswap Rolls Out Morpho-Powered
+ * Vaults" or "vaults built on Morpho" are about Uniswap, not Morpho.
+ */
+function withoutModifierUses(lead: string, names: string[]): string {
+  let out = lead;
+  for (const n of names.filter((x) => x.length >= 3)) {
+    const e = escapeRe(n);
+    out = out
+      .replace(new RegExp(String.raw`\b${e}[- ]${MODIFIER}\b`, "gi"), " ")
+      .replace(new RegExp(String.raw`\b(?:powered by|built on|on top of|integrat\w* with|using)\s+${e}\b`, "gi"), " ");
+  }
+  return out;
+}
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * "Token Launch Discovery Hub", "token launch platform" — part of a product's name, not this
+ * project's TGE: a Title Case phrase followed by another capitalised word, or a tool noun.
+ */
+const TOOL_NOUN = /^(?:platforms?|pads?|launchpads?|hubs?|discovery|tools?|trackers?|calendars?|services?|programs?|pages?|portals?|features?)\b/i;
+function tokenLaunchIsAName(m: RegExpMatchArray): boolean {
+  const next = (m.input ?? "").slice((m.index ?? 0) + m[0].length).match(/^\s+(\S+)/)?.[1] ?? "";
+  const titleCase = m[0] !== "TGE" && m[0].split(/\s+/).every((w) => /^[A-Z]/.test(w));
+  return TOOL_NOUN.test(next) || (titleCase && /^[A-Z][a-z]/.test(next) && !HEADLINE_GLUE.test(next));
+}
+/** Title Case headlines capitalise every word: "Token Launch Is Scheduled For Friday" is still a launch. */
+const HEADLINE_GLUE = /^(?:is|are|was|were|will|set|sets|goes|going|begins?|starts?|kicks|date|dates|scheduled|confirmed|announced|details|delayed|postponed|live|coming|soon|today|tomorrow|this|next|on|in|at|for|from|to|with|and|of|by|after|before|sees|draws|raises|nets|hits)\b/i;
 
 export function factsFromPosts(posts: DatedPost[], opts: { ownChannel: boolean; names?: string[] }): Fact[] {
   const out: Fact[] = [];
@@ -77,6 +107,7 @@ export function factsFromPosts(posts: DatedPost[], opts: { ownChannel: boolean; 
     }
     for (const [re, type] of TRIGGER_RULES) {
       const m = p.text.match(re);
+      if (m && type === "token_launch" && tokenLaunchIsAName(m)) continue;
       if (m && about(m)) {
         push({ key: FK.trigger, value: { type }, kind: "fact", confidence: conf * 0.9, sourceUrl: p.url, quote: quote(p), observedAt: p.at });
         break; // one trigger per post keeps noise down

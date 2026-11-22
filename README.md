@@ -79,8 +79,10 @@ project. Examples of bugs found by running it on real projects, and fixed:
   family and name, not by size.
 
 **Free by default.** The X API costs money, so the default stack uses only free sources: DefiLlama, GitHub,
-Google News, public Telegram channels, governance forums and Farcaster. The X API is optional. No scraping
-of X or LinkedIn.
+Google News, project blogs (RSS), public Telegram channels, governance forums and Farcaster. The X API is
+optional. No scraping of X or LinkedIn. And because a BD person often already has the project's X profile
+open, there's an optional **hints** box: paste team handles or links you spotted, and the copilot checks
+them like any other lead (shown as "added by you" if nothing public confirms them).
 
 **Filter before spending.** Projects outside the target market (e.g. Web2 sites when targeting Web3) stop
 early, before any paid lookups.
@@ -88,6 +90,15 @@ early, before any paid lookups.
 **People are hard to find, so say how sure we are.** Each decision maker is marked *strong* (e.g. named
 with a role on the project's own site, or bio states a role + the project) or *medium* (e.g. bio mentions
 the project, no role), with the evidence shown.
+
+---
+
+## Measuring accuracy
+
+[`eval/`](eval/) is a Python notebook that checks whether the scores predict buying: it snapshots scores
+for a list of projects, compares them with a BD person's own A/B/C calls, and — once real outcomes are in
+(audit announced, replied, meeting) — measures AUC and hit rate by score band, and fits better scoring
+weights. Outcomes only count if they happen *after* the snapshot, so the check can't peek at the answer.
 
 ---
 
@@ -114,15 +125,15 @@ resolve → discover → collect → extract → enrich → profile → filter (
 
 | Step | File (`lib/pipeline/steps/`) | What it does |
 |---|---|---|
-| resolve | `resolve.ts` | Website or X handle → canonical project. Handle lookup: DefiLlama exact → X API (optional) → DefiLlama fuzzy |
+| resolve | `resolve.ts` | Website or X handle → canonical project. Handle lookup: DefiLlama exact → X API (optional) → GitHub org profile → DefiLlama fuzzy |
 | discover | `discover.ts` | Finds docs, security, team and blog pages (with fallbacks for JavaScript-only sites) |
 | collect | `collect.ts` | Fetches pages through the SSRF guard |
 | extract | `extract.ts` | Segments, stage, claims, contacts from page text |
 | enrich | `enrich.ts` | DefiLlama (category, TVL, chains, audits, incidents) + GitHub (activity, languages, code size, audit repos) |
 | profile | `profile.ts` | Merges everything; structured data beats keyword guesses |
 | filter | `filter.ts` | Target market + ICP — runs before any paid lookups |
-| social | `social.ts` | News, Telegram, governance forum, X (optional) → dated events |
-| people | `people.ts` | Team from website links, GitHub, forum team groups, Farcaster, Bluesky → role + affiliation |
+| social | `social.ts` | News, project blog feeds, Telegram, governance forum, X (optional) → dated events |
+| people | `people.ts` | Team from your hints, website links, GitHub contributors and public org members, forum team groups, Farcaster, Bluesky → role + affiliation |
 | posture | `posture.ts` | Per service: covered / stale / partial / none / unknown |
 | triggers | `triggers.ts` | Dated "why now" events; undated → unverified |
 | score | `lib/scoring/score.ts` | Weighted score with caps (see above) |
@@ -135,7 +146,8 @@ resolve → discover → collect → extract → enrich → profile → filter (
 |---|---|---|
 | Project website | — | Segments, stage, claims, team, links |
 | DefiLlama `/protocols`, `/hacks` | — | X handle → website, category, TVL, chains, audit links, incidents |
-| GitHub | optional `GITHUB_TOKEN` (raises rate limit) | Code activity, contract size, audit repos, contributors |
+| GitHub | optional `GITHUB_TOKEN` (raises rate limit) | Code activity, contract size, audit repos, contributors, public org members; X handle → org → website |
+| Project blogs (RSS/Atom) | — | Dated announcements from the site's feed, Medium, Substack, Mirror, Paragraph |
 | Google News RSS | — | Funding, launches, partnerships (project must be the subject) |
 | Telegram public channel preview | — | Dated announcements |
 | Governance forums (Discourse) | — | Team groups, latest proposals |

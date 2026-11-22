@@ -29,6 +29,7 @@ const usd = (n?: number) =>
 
 export function AnalyzeForm() {
   const [input, setInput] = useState("");
+  const [hints, setHints] = useState("");
   const [loading, setLoading] = useState(false);
   const [res, setRes] = useState<Result | null>(null);
 
@@ -40,7 +41,7 @@ export function AnalyzeForm() {
       const r = await fetch("/api/analyze", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ input }),
+        body: JSON.stringify({ input, ...(hints.trim() ? { hints } : {}) }),
       });
       setRes(await r.json());
     } catch (err) {
@@ -54,7 +55,8 @@ export function AnalyzeForm() {
 
   return (
     <div className="flex flex-col gap-6">
-      <form onSubmit={submit} className="flex gap-2">
+      <form onSubmit={submit} className="flex flex-col gap-2">
+        <div className="flex gap-2">
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -67,6 +69,24 @@ export function AnalyzeForm() {
         >
           {loading ? "Researching…" : "Analyze"}
         </button>
+        </div>
+        <details className="text-sm">
+          <summary className="cursor-pointer text-zinc-600 dark:text-zinc-400">
+            Add what you know (optional) — team X handles or links you spotted
+          </summary>
+          <textarea
+            value={hints}
+            onChange={(e) => setHints(e.target.value)}
+            maxLength={2000}
+            rows={3}
+            placeholder={"@janedoe @cto_handle\nhttps://project.xyz/team  https://medium.com/@project/announcing-v2"}
+            className="mt-2 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 font-mono text-xs dark:border-zinc-700 dark:bg-zinc-900"
+          />
+          <p className="mt-1 text-xs text-zinc-500">
+            Handles are checked against Farcaster, GitHub and the project&apos;s site like any other lead — shown as
+            &ldquo;added by you&rdquo; if nothing confirms them. Links are read as extra pages (up to 10 handles, 5 links).
+          </p>
+        </details>
       </form>
 
       {res?.error && <p className="text-red-600">{res.error}</p>}

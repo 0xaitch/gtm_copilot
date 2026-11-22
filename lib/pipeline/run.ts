@@ -28,8 +28,9 @@ export async function runPipeline(
   raw: string,
   deps: StepDeps,
   onStage?: (stage: StageName, ctx: AnalysisContext) => void | Promise<void>,
+  hints?: AnalysisContext["hints"],
 ): Promise<AnalysisContext> {
-  let ctx = emptyContext(raw);
+  let ctx = emptyContext(raw, hints);
   for (const step of PIPELINE) {
     await onStage?.(step.name, ctx);
     try {

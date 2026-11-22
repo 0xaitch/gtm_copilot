@@ -68,18 +68,22 @@ export const brief: Step = {
 
       // Decision makers: found contacts matching personas first, then roles still to find
       const decisionMakers: ProspectBrief["decisionMakers"] = [];
+      const who = (x: { name?: string; handle?: string }) => (x.handle ?? x.name ?? "").toLowerCase();
+      const listed = (c: { name?: string; handle?: string }) =>
+        decisionMakers.some((d) => d.found && ((!!d.handle && d.handle === c.handle) || (!!d.name && d.name === c.name)));
       for (const role of [...svc.personas.primary, ...svc.personas.secondary]) {
         const c = p.contacts.find((x) => norm(x.role).includes(norm(role)));
-        if (c && !decisionMakers.some((d) => d.name === c.name)) {
+        if (c && !listed(c)) {
           decisionMakers.push({ role: c.role, name: c.name, handle: c.handle, found: true, affiliation: c.affiliation, evidence: c.evidence, url: c.sourceUrl, bio: c.bio });
         }
       }
       for (const role of svc.personas.primary.slice(0, 3)) {
         if (!decisionMakers.some((d) => norm(d.role).includes(norm(role)))) decisionMakers.push({ role, found: false });
       }
-      // Other people found on the site — possible champions / intros
-      for (const c of p.contacts.slice(0, 5)) {
-        if (!decisionMakers.some((d) => d.name === c.name)) {
+      // Other people found — possible champions / intros. People you added are always shown.
+      const others = [...p.contacts.slice(0, 5), ...p.contacts.slice(5).filter((c) => c.fromHint)];
+      for (const c of others) {
+        if (!listed(c) && who(c)) {
           decisionMakers.push({ role: `${c.role} (other contact)`, name: c.name, handle: c.handle, found: true, affiliation: c.affiliation, evidence: c.evidence, url: c.sourceUrl, bio: c.bio });
         }
       }

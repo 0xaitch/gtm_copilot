@@ -5,9 +5,9 @@
  *  - GitHub: code activity, contract languages, LOC estimate, audits folder/repo dates
  * Structured facts carry confidence ≥ 0.9 so they outrank keyword heuristics.
  */
-import { githubSummary, parseGithubOwner } from "@/lib/connectors/github";
+import { githubOrgForHandle, githubSummary, parseGithubOwner } from "@/lib/connectors/github";
 import {
-  findProtocolByDomain, findProtocolByTwitter, llamaHacks, llamaProtocols, mapCategory, protocolUrl,
+  coreHandle, findProtocolByDomain, findProtocolByTwitter, llamaHacks, llamaProtocols, mapCategory, protocolUrl,
   type LlamaProtocol,
 } from "@/lib/connectors/defillama";
 import { FK } from "@/lib/domain/fact-keys";
@@ -137,6 +137,13 @@ export const enrich: Step = {
       facts.push(...(await fromDefiLlama(llama, now)));
       project.xHandle ??= llama.twitter ?? undefined;
       if (!project.github && llama.github?.[0]) project.github = `https://github.com/${llama.github[0]}`;
+    }
+    // Still no GitHub (site blocked bots, or doesn't link it)? Find the org whose profile lists the project's X handle.
+    if (!project.github) {
+      for (const h of [...new Set([project.xHandle, llama?.twitter].filter((x): x is string => !!x))]) {
+        const org = await githubOrgForHandle(h, [coreHandle(h)]);
+        if (org) { project.github = org.html_url; break; }
+      }
     }
 
     const owner = parseGithubOwner(project.github);
