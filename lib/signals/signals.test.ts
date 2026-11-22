@@ -61,6 +61,14 @@ describe("factsFromPosts", () => {
     expect(types("Morpho launched Morpho-powered vaults for institutions")).toContain("product_launch");
   });
 
+  it("doesn't credit a raise to the project when it only describes the raiser", () => {
+    const names = ["vanta"];
+    const funding = (t: string) => factsFromPosts([post(t, "news")], { ownChannel: false, names }).some((x) => x.key === FK.funding);
+    expect(funding("DoorDash, Vanta backer Pear VC closes $333M seed fund to back the next generation of AI startups")).toBe(false);
+    expect(funding("Vanta investors pour $50M into rival startup")).toBe(false);
+    expect(funding("Vanta raises $150M Series C")).toBe(true);
+  });
+
   it("treats 'Token Launch <Name>' and 'token launch platform' as product names, not a TGE", () => {
     const types = (t: string) => factsFromPosts([post(t)], { ownChannel: true })
       .filter((x) => x.key === FK.trigger).map((x) => (x.value as { type: string }).type);

@@ -66,6 +66,8 @@ function withoutModifierUses(lead: string, names: string[]): string {
     const e = escapeRe(n);
     out = out
       .replace(new RegExp(String.raw`\b${e}[- ]${MODIFIER}\b`, "gi"), " ")
+      // "DoorDash, Vanta backer Pear VC closes $333M fund" — the brand describes someone else
+      .replace(new RegExp(String.raw`\b${e}(?:'s)?\s+(?:backers?|investors?|partners?|customers?|clients?|users?|alums?|alumni|co-?founders?|founders?|ex-employees?)\b`, "gi"), " ")
       .replace(new RegExp(String.raw`\b(?:powered by|built on|on top of|integrat\w* with|using)\s+${e}\b`, "gi"), " ");
   }
   return out;
