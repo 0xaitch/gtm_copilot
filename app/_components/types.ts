@@ -1,4 +1,5 @@
 import type { Fact, Posture, PostureStatus, Profile, ProspectBrief, ServiceScore, Thesis } from "@/lib/domain/types";
+import type { StageName } from "@/lib/pipeline/types";
 
 /** What /api/analyze returns (raw page text stripped). */
 export interface AnalysisResult {
@@ -20,6 +21,26 @@ export interface AnalysisResult {
   rubrik?: { name: string; thesisMinScore: number; services: { key: string; name: string }[] };
   error?: string;
 }
+
+/** Streamed by /api/analyze (stream: true): one line as each pipeline stage starts. */
+export interface ProgressEvent {
+  type: "progress";
+  stage: StageName;
+  index: number;          // 0-based position of the stage now starting
+  total: number;
+  project?: { name?: string; domain?: string };
+  counts: { pages: number; facts: number; people: number };
+}
+
+/** The pipeline's 15 stages grouped into the steps a rep cares about. */
+export const PHASES: { label: string; detail: string; stages: StageName[] }[] = [
+  { label: "Finding the project", detail: "website, X handle, DefiLlama, GitHub org", stages: ["resolve"] },
+  { label: "Reading the website", detail: "team, docs, security and blog pages", stages: ["discover", "collect"] },
+  { label: "Pulling facts", detail: "segments, audits, funding, TVL, code size", stages: ["extract", "enrich", "profile", "filter"] },
+  { label: "News and team", detail: "news, Telegram, forum, GitHub, Farcaster", stages: ["social", "people"] },
+  { label: "Scoring services", detail: "coverage, why-now triggers, fit", stages: ["posture", "triggers", "score"] },
+  { label: "Writing briefs", detail: "thesis, evidence check, outreach brief", stages: ["thesis", "gate", "brief"] },
+];
 
 export const usd = (n?: number) =>
   !n ? undefined : n >= 1e9 ? `$${(n / 1e9).toFixed(1)}B` : n >= 1e6 ? `$${(n / 1e6).toFixed(1)}M` : `$${Math.round(n / 1e3)}K`;

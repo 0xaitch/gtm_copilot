@@ -2,17 +2,42 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Results } from "./_components/results";
-import type { AnalysisResult } from "./_components/types";
+import { PHASES, type AnalysisResult, type ProgressEvent } from "./_components/types";
 
-async function fetchAnalysis(input: string, hints: string): Promise<AnalysisResult> {
+/**
+ * Runs an analysis, streaming one progress line per pipeline stage, then the result.
+ * Returns null if it was cancelled.
+ */
+async function fetchAnalysis(
+  input: string, hints: string, onProgress: (p: ProgressEvent) => void, signal: AbortSignal,
+): Promise<AnalysisResult | null> {
   try {
     const r = await fetch("/api/analyze", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ input, ...(hints.trim() ? { hints } : {}) }),
+      body: JSON.stringify({ input, stream: true, ...(hints.trim() ? { hints } : {}) }),
+      signal,
     });
-    return (await r.json()) as AnalysisResult;
+    if (!r.ok || !r.body) return (await r.json().catch(() => ({ error: `Request failed (${r.status})` }))) as AnalysisResult;
+    const reader = r.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += value;
+      let nl: number;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        const msg = JSON.parse(line) as ProgressEvent | { type: "result"; result: AnalysisResult };
+        if (msg.type === "progress") onProgress(msg);
+        else return msg.result;
+      }
+    }
+    return { error: "The analysis stopped before finishing — try again." } as AnalysisResult;
   } catch (err) {
+    if (signal.aborted) return null;
     return { error: String(err) } as AnalysisResult;
   }
 }
@@ -24,7 +49,28 @@ export function AnalyzeForm({ initialQuery }: { initialQuery?: string }) {
   const [loading, setLoading] = useState(!!initialQuery);
   const [elapsed, setElapsed] = useState(0);
   const [res, setRes] = useState<AnalysisResult | null>(null);
+  const [progress, setProgress] = useState<ProgressEvent | null>(null);
+  const [cancelled, setCancelled] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  async function run(q: string, h: string) {
+    const ac = new AbortController();
+    abortRef.current = ac;
+    const r = await fetchAnalysis(q, h, setProgress, ac.signal);
+    if (abortRef.current !== ac) return; // superseded
+    abortRef.current = null;
+    setRes(r);
+    setLoading(false);
+  }
+
+  function cancel() {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setLoading(false);
+    setProgress(null);
+    setCancelled(true);
+  }
 
   // "/" jumps to the search box from anywhere (unless you're already typing)
   useEffect(() => {
@@ -53,7 +99,7 @@ export function AnalyzeForm({ initialQuery }: { initialQuery?: string }) {
   useEffect(() => {
     if (!initialQuery || started.current) return;
     started.current = true;
-    void fetchAnalysis(initialQuery, "").then((r) => { setRes(r); setLoading(false); });
+    void run(initialQuery, "");
   }, [initialQuery]);
 
   async function submit(e: React.FormEvent) {
@@ -66,8 +112,9 @@ export function AnalyzeForm({ initialQuery }: { initialQuery?: string }) {
     setLoading(true);
     setElapsed(0);
     setRes(null);
-    setRes(await fetchAnalysis(q, hints));
-    setLoading(false);
+    setProgress(null);
+    setCancelled(false);
+    await run(q, hints);
   }
 
   return (
@@ -121,28 +168,70 @@ export function AnalyzeForm({ initialQuery }: { initialQuery?: string }) {
         )}
       </form>
 
-      {loading && <Loading elapsed={elapsed} input={input} />}
+      {loading && <Progress elapsed={elapsed} input={input} progress={progress} onCancel={cancel} />}
+      {cancelled && !loading && !res && <p className="text-sm text-zinc-500">Analysis cancelled.</p>}
       {res?.error && <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800 ring-1 ring-rose-600/20 dark:bg-rose-950 dark:text-rose-300">{res.error}</p>}
       {res && !res.error && <Results res={res} />}
-      {!res && !loading && <EmptyState />}
+      {!res && !loading && !cancelled && <EmptyState />}
     </div>
   );
 }
 
-function Loading({ elapsed, input }: { elapsed: number; input: string }) {
+/** Live checklist of the analysis: which step is running, what's done, and what's been found so far. */
+function Progress({ elapsed, input, progress, onCancel }: {
+  elapsed: number; input: string; progress: ProgressEvent | null; onCancel: () => void;
+}) {
+  const current = progress ? PHASES.findIndex((p) => p.stages.includes(progress.stage)) : 0;
+  const pct = progress ? Math.round((progress.index / progress.total) * 100) : 0;
+  const c = progress?.counts;
+  const name = progress?.project?.name ?? progress?.project?.domain;
+
   return (
-    <div className="flex flex-col gap-3" aria-live="polite">
-      <p className="text-sm text-zinc-500">
-        Researching <b className="text-zinc-700 dark:text-zinc-300">{input}</b> — site, docs, GitHub, news, Farcaster…{" "}
-        <span className="tabular-nums">{elapsed}s</span>
-        <span className="text-zinc-400"> (usually 15–60s)</span>
-      </p>
-      <div className="h-16 animate-pulse rounded-lg bg-zinc-200/70 dark:bg-zinc-800/70" />
-      <div className="grid gap-4 lg:grid-cols-[17rem_1fr]">
-        <div className="h-48 animate-pulse rounded-lg bg-zinc-200/70 dark:bg-zinc-800/70" />
-        <div className="h-48 animate-pulse rounded-lg bg-zinc-200/70 dark:bg-zinc-800/70" />
+    <section aria-live="polite" aria-busy="true" className="rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+        <span className="h-2 w-2 animate-pulse rounded-full bg-sky-500" aria-hidden />
+        <p className="text-sm">
+          Researching <b>{name ?? input}</b>
+          {name && progress?.project?.domain && name !== progress.project.domain && <span className="text-zinc-500"> · {progress.project.domain}</span>}
+        </p>
+        <span className="text-sm tabular-nums text-zinc-500">{elapsed}s <span className="text-zinc-400">· usually 15–60s</span></span>
+        <button type="button" onClick={onCancel} className="ml-auto rounded-md border border-zinc-300 px-2.5 py-1 text-xs text-zinc-600 hover:border-zinc-400 hover:text-zinc-900 dark:border-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-100">
+          Cancel
+        </button>
       </div>
-    </div>
+      <div className="h-0.5 bg-zinc-100 dark:bg-zinc-800">
+        <div className="h-full bg-sky-500 transition-[width] duration-500" style={{ width: `${pct}%` }} />
+      </div>
+
+      <div className="grid gap-4 px-4 py-3 sm:grid-cols-[1fr_auto]">
+        <ol className="flex flex-col gap-1.5 text-sm">
+          {PHASES.map((p, i) => {
+            const state = i < current ? "done" : i === current ? "active" : "todo";
+            return (
+              <li key={p.label} className="flex items-baseline gap-2.5">
+                <span aria-hidden className={`inline-flex h-4 w-4 shrink-0 translate-y-0.5 items-center justify-center rounded-full text-[10px] ${
+                  state === "done" ? "bg-emerald-600 text-white"
+                    : state === "active" ? "border-2 border-sky-500 border-t-transparent animate-spin"
+                      : "border border-zinc-300 dark:border-zinc-700"}`}>
+                  {state === "done" ? "✓" : ""}
+                </span>
+                <span className={state === "todo" ? "text-zinc-400" : state === "active" ? "font-medium" : ""}>{p.label}</span>
+                {state === "active" && <span className="text-xs text-zinc-500">{p.detail}</span>}
+                <span className="sr-only">{state === "done" ? "done" : state === "active" ? "in progress" : "pending"}</span>
+              </li>
+            );
+          })}
+        </ol>
+        <dl className="flex gap-5 self-start text-sm sm:flex-col sm:gap-1.5 sm:text-right">
+          {([["Pages read", c?.pages], ["Facts", c?.facts], ["People", c?.people]] as const).map(([k, v]) => (
+            <div key={k} className="flex items-baseline gap-1.5 sm:justify-end">
+              <dt className="text-zinc-500">{k}</dt>
+              <dd className="min-w-6 font-semibold tabular-nums">{v ?? 0}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    </section>
   );
 }
 
