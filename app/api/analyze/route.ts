@@ -29,5 +29,11 @@ export async function POST(request: Request) {
   return Response.json({
     ...rest,
     sources: sources.map(({ id, url, kind, fetchedAt }) => ({ id, url, kind, fetchedAt })),
+    // display names for service keys, and the score a service needs before it gets a brief
+    rubrik: {
+      name: rubrik.name,
+      thesisMinScore: rubrik.scoring.thesisMinScore,
+      services: rubrik.services.map(({ key, name }) => ({ key, name })),
+    },
   });
 }
