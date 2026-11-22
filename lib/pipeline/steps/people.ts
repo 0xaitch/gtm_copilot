@@ -30,7 +30,7 @@ import { FK } from "@/lib/domain/fact-keys";
 import type { Contact, Fact } from "@/lib/domain/types";
 import { bioMentionsProject, isFormer, roleFromBio, roleNamesOtherOrg } from "@/lib/signals/people";
 import type { Step } from "../types";
-import { brandFromDomain, isGenericName, newId } from "../util";
+import { brandFromDomain, isEvergreenPage, isGenericName, newId } from "../util";
 import { ownSiteChecker } from "./extract";
 import { buildProfile } from "./profile";
 
@@ -95,7 +95,7 @@ export const people: Step = {
     // Pages you added from other sites are hints, not the project's own website.
     const ownSite = ownSiteChecker(project.domain);
     for (const s of ctx.sources) {
-      if (s.kind !== "page" || !s.xLinks?.length || s.xLinks.length > 25) continue;
+      if (s.kind !== "page" || !s.xLinks?.length || s.xLinks.length > 25 || isEvergreenPage(s.url)) continue;
       const own = ownSite(s);
       for (const h of s.xLinks) add(`x:${h}`, { handle: h, link: `https://x.com/${h}`, note: `linked from ${s.url}${own ? "" : " (a page you added)"}` }, own ? "site" : "hint-page");
     }

@@ -9,16 +9,8 @@ const DAY = 86_400_000;
 /** Same-type triggers this close together are one event reported several times (e.g. 8 articles on one raise). */
 const SAME_EVENT_DAYS = 14;
 
-/**
- * Pages that permanently list partners, customers or integrations. Their text ("we're excited to
- * partner with X", "X raised…" in a case study) describes others or is evergreen — not a why-now.
- */
-const EVERGREEN_PAGE = /\/(?:partners?|partner-program|partnerships|integrations?|ecosystem|customers?|case-stud(?:y|ies)|testimonials?|clients?|showcase)(?:[/?#.-]|$)/i;
-export function isEvergreenPage(url?: string): boolean {
-  if (!url) return false;
-  try { return EVERGREEN_PAGE.test(new URL(url).pathname); } catch { return false; }
-}
-
+import { isEvergreenPage } from "../util";
+export { isEvergreenPage }; // kept here for existing imports
 /**
  * Merges same-type triggers within SAME_EVENT_DAYS of each other into one, keeping every fact id.
  * The merged trigger takes the earliest date and the note of its best fact (verified first).

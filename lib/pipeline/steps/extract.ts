@@ -8,7 +8,7 @@ import type { Fact, Segment, Source, TriggerType } from "@/lib/domain/types";
 import { Segment as SegmentEnum, TriggerType as TriggerEnum } from "@/lib/domain/types";
 import { FK } from "@/lib/domain/fact-keys";
 import type { Step } from "../types";
-import { dateNear, newId, parseUsdAmount, rootDomain, snippet } from "../util";
+import { dateNear, isEvergreenPage, newId, parseUsdAmount, rootDomain, snippet } from "../util";
 
 
 /* ---------------- Heuristic extractor ---------------- */
@@ -101,7 +101,12 @@ const RULES: Rule[] = [
   { re: /\bMove\b (language|smart contracts?)/i, build: () => ({ key: FK.language, value: "move", kind: "fact", confidence: 0.6 }) },
 ];
 
-const ROLE_RE = /\b([A-Z][a-z]+ [A-Z][a-z]+)\s*[,|–—-]\s*(Co-?founder (?:&|and) CTO|Co-?founder (?:&|and) CEO|CTO|CEO|CISO|COO|Chief [A-Z][a-z]+ Officer|Head of [A-Z][a-z]+(?: [A-Z][a-z]+)?|Co-?founder)\b/g;
+/** Does a closing quotation mark sit right before this position (a testimonial's attribution)? */
+export function isQuoteAttribution(text: string, index: number): boolean {
+  return /["”’»]\s*[-–—―]?\s*$/.test(text.slice(Math.max(0, index - 6), index));
+}
+
+const ROLE_RE =/\b([A-Z][a-z]+ [A-Z][a-z]+)\s*[,|–—-]\s*(Co-?founder (?:&|and) CTO|Co-?founder (?:&|and) CEO|CTO|CEO|CISO|COO|Chief [A-Z][a-z]+ Officer|Head of [A-Z][a-z]+(?: [A-Z][a-z]+)?|Co-?founder)\b/g;
 
 /**
  * "X was (co-)founded by Cambridge mathematicians Jane Doe and John Smith." → founders.
@@ -145,7 +150,11 @@ export function heuristicExtract(sources: Source[], isOwn: (s: Source) => boolea
       seen.add(dedupe);
       facts.push({ ...f, id: newId("fact"), sourceUrl: s.url, quote: snippet(s.text, m.index ?? 0, m[0].length) });
     }
+    // Partner/customer pages name other companies' people ("Justin Rende, CEO Rhymetec")
+    if (isEvergreenPage(s.url)) continue;
     for (const m of s.text.matchAll(ROLE_RE)) {
+      // A testimonial's attribution ("…a great partner.” Aaron Kiemele, CISO Jamf") is a customer, not the team
+      if (isQuoteAttribution(s.text, m.index ?? 0)) continue;
       const dedupe = `contact:${m[1]}`;
       if (seen.has(dedupe)) continue;
       seen.add(dedupe);

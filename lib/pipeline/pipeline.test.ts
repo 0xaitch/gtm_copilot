@@ -180,6 +180,21 @@ describe("GitHub org website", () => {
   });
 });
 
+describe("customer and partner people are not the team", () => {
+  const page = (url: string, text: string): Source => ({ id: url, url, kind: "page", fetchedAt: NOW.toISOString(), text });
+  const names = (sources: Source[]) =>
+    heuristicExtract(sources).filter((f) => f.key === FK.contact).map((f) => (f.value as { name: string }).name);
+
+  it("skips testimonial attributions and partner pages, keeps the real team", () => {
+    expect(names([
+      page("https://vanta.com/", "“Vanta made audits painless.” Aaron Kiemele, CISO Jamf. Meet the team: Christina Cacioppo, CEO"),
+      page("https://vanta.com/partners/service-providers", "Great partner. Travis Good, CEO Workstreet"),
+      page("https://vanta.com/customers", "Founded by Jane Smith and John Roe, OtherCo grew fast."),
+    ])).toEqual(["Christina Cacioppo"]);
+    expect(names([page("https://proj.xyz/team", "\"Shipping fast\" — Jane Doe, CTO")])).toEqual([]);
+  });
+});
+
 describe("roles held elsewhere", () => {
   it("spots a role tied to another organisation", async () => {
     const { roleNamesOtherOrg } = await import("@/lib/signals/people");

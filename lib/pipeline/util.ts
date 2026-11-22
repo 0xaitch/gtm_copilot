@@ -44,6 +44,17 @@ export function brandFromDomain(domain?: string): string | undefined {
   return parts[idx];
 }
 
+/**
+ * Pages that list partners, customers or integrations. Their text is about other companies
+ * ("we're excited to partner with X", "Jane Doe, CEO of OtherCo") or evergreen — not this
+ * project's news or team.
+ */
+const EVERGREEN_PAGE = /\/(?:partners?|partner-program|partnerships|integrations?|ecosystem|customers?|case-stud(?:y|ies)|testimonials?|clients?|showcase)(?:[/?#.-]|$)/i;
+export function isEvergreenPage(url?: string): boolean {
+  if (!url) return false;
+  try { return EVERGREEN_PAGE.test(new URL(url).pathname); } catch { return false; }
+}
+
 export const titleCase = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 const squash = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
